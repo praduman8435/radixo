@@ -88,24 +88,109 @@ const DISHES: [string, DishCategory, string, number, boolean?][] = [
   ['Raita', 'side', 'Boondi raita', 8],
   ['Gulab jamun', 'sweet', 'One piece', 12, true],
   ['Kheer', 'sweet', 'Rice kheer', 15, true],
+  ['Gobi paratha', 'breakfast', 'Two cauliflower parathas with curd', 28],
+  ['Methi thepla', 'breakfast', 'Three theplas with curd and pickle', 22],
+  ['Idli sambar', 'breakfast', 'Four idlis with sambar and chutney', 30],
+  ['Masala dosa', 'breakfast', 'Crisp dosa, potato masala, sambar', 40],
+  ['Medu vada', 'breakfast', 'Two vadas with sambar and chutney', 25],
+  ['Uttapam', 'breakfast', 'Onion-tomato uttapam with chutney', 35],
+  ['Besan chilla', 'breakfast', 'Two gram-flour chillas with chutney', 25],
+  ['Chole bhature', 'breakfast', 'Two bhature with chole (Sunday)', 45, true],
+  ['Puri bhaji', 'breakfast', 'Four puris with aloo bhaji', 30],
+  ['Sabudana khichdi', 'breakfast', 'With peanuts and lemon', 28],
+  ['Bread omelette', 'breakfast', 'Two-egg masala omelette with toast', 30],
+  ['Boiled eggs', 'breakfast', 'Two eggs, salt and pepper', 16],
+  ['Sprouts chaat', 'breakfast', 'Moong sprouts, onion, tomato, lemon', 20],
+  ['Bread butter jam', 'breakfast', 'Four slices, toasted', 15],
+  ['Cornflakes with milk', 'breakfast', 'A bowl with warm or cold milk', 25],
+  ['Coffee', 'drink', 'Filter coffee', 12],
+  ['Lassi', 'drink', 'Sweet lassi', 20],
+  ['Masala chaas', 'drink', 'Spiced buttermilk', 10],
+  ['Banana shake', 'drink', 'Banana and milk', 25],
+  ['Nimbu pani', 'drink', 'Fresh lemon water', 10],
+  ['Pav bhaji', 'snack', 'Two pav with butter bhaji', 35],
+  ['Aloo tikki', 'snack', 'Two tikkis with chutney', 20],
+  ['Kachori', 'snack', 'Two kachoris with aloo sabzi', 15],
+  ['Dhokla', 'snack', 'Soft khaman dhokla', 20],
+  ['Veg momos', 'snack', 'Six steamed momos with chutney', 35],
+  ['Onion pakoda', 'snack', 'Crisp onion pakodas', 15],
+  ['Masala Maggi', 'snack', 'With veggies', 25],
+  ['Bhel puri', 'snack', 'Puffed rice, sev, chutneys', 20],
+  ['Dal fry', 'dal', 'Toor dal fry with onion-tomato', 18],
+  ['Sambar', 'dal', 'South Indian lentil and vegetable stew', 16],
+  ['Dum aloo', 'sabzi', 'Baby potatoes in rich gravy', 20],
+  ['Aloo baingan', 'sabzi', 'Potato and brinjal', 16],
+  ['Lauki kofta', 'sabzi', 'Bottle-gourd koftas in gravy', 22],
+  ['Palak paneer', 'special', 'Paneer in spinach gravy', 40, true],
+  ['Matar paneer', 'special', 'Paneer and peas curry', 38, true],
+  ['Shahi paneer', 'special', 'Paneer in creamy cashew gravy', 45, true],
+  ['Malai kofta', 'special', 'Paneer-potato koftas in creamy gravy', 40, true],
+  ['Egg bhurji', 'special', 'Two-egg masala scramble', 30, true],
+  ['Chicken biryani', 'special', 'Dum biryani with raita (Sunday)', 80, true],
+  ['Butter naan', 'bread', 'Two naans with butter', 15],
+  ['Laccha paratha', 'bread', 'Two layered parathas', 18],
+  ['Missi roti', 'bread', 'Two besan-masala rotis', 12],
+  ['Veg biryani', 'rice', 'Vegetable dum biryani', 40],
+  ['Lemon rice', 'rice', 'South Indian lemon rice', 20],
+  ['Curd rice', 'rice', 'Cool curd rice with tadka', 20],
+  ['Khichdi', 'rice', 'Moong dal khichdi with ghee', 25],
+  ['Papad', 'side', 'Roasted papad', 5],
+  ['Sooji halwa', 'sweet', 'Ghee sooji halwa', 15, true],
+  ['Gajar halwa', 'sweet', 'Carrot halwa (winter)', 25, true],
+  ['Rasgulla', 'sweet', 'Two pieces', 15, true],
+  ['Jalebi', 'sweet', 'Hot jalebis, 100 g', 15, true],
 ]
 
-// Photos cut from the Radixo designs; other dishes show an illustrated tile until the owner uploads one.
-const PHOTOS: Record<string, string> = {
-  'Paneer butter masala': '/dishes/paneer.jpg', 'Kadhai paneer': '/dishes/paneer.jpg', 'Egg curry': '/dishes/egg-curry.jpg', 'Chicken curry': '/dishes/chicken-curry.jpg',
-  'Dal tadka': '/dishes/dal.jpg', 'Moong dal': '/dishes/dal.jpg', 'Arhar dal': '/dishes/dal.jpg', 'Masoor dal': '/dishes/dal.jpg', 'Chana dal': '/dishes/dal.jpg', 'Mix dal': '/dishes/dal.jpg',
-  'Jeera rice': '/dishes/rice.jpg', 'Plain rice': '/dishes/rice.jpg', Rajma: '/dishes/rajma.jpg',
+// Photos: public/dishes/<slug>.jpg from Wikimedia Commons (see public/dishes/CREDITS.md); a few from the Radixo designs.
+const DESIGN_PHOTOS: Record<string, string> = {
+  'Dal tadka': '/dishes/dal.jpg', 'Moong dal': '/dishes/dal.jpg', Rajma: '/dishes/rajma.jpg',
 }
+const photoFor = (name: string) => DESIGN_PHOTOS[name] ?? `/dishes/${slug(name)}.jpg`
 
 type DayTemplate = Partial<Record<Meal, Record<string, string[]>>>
 const WEEK_TEMPLATE: DayTemplate[] = [
-  { breakfast: { Breakfast: ['Aloo paratha', 'Poha'] }, lunch: { Dal: ['Dal tadka', 'Rajma'], Sabzi: ['Aloo gobhi', 'Bhindi masala'] }, snacks: { Snack: ['Samosa', 'Bread pakora'] }, dinner: { Dal: ['Moong dal'], Sabzi: ['Mix veg', 'Aloo matar'] } },
-  { breakfast: { Breakfast: ['Poha', 'Upma'] }, lunch: { Dal: ['Kadhi pakora', 'Chana dal'], Sabzi: ['Aloo matar', 'Lauki chana'] }, snacks: { Snack: ['Vada pav', 'Veg sandwich'] }, dinner: { Dal: ['Arhar dal'], Sabzi: ['Aloo jeera', 'Cabbage matar'] } },
-  { breakfast: { Breakfast: ['Paneer paratha', 'Upma'] }, lunch: { Dal: ['Dal makhani', 'Mix dal'], Sabzi: ['Soya aloo', 'Cabbage matar', 'Tinda masala'] }, snacks: { Snack: ['Samosa', 'Veg sandwich'] }, dinner: { Dal: ['Dal tadka'], Special: ['Paneer butter masala', 'Kadhai paneer', 'Egg curry'], Sweet: ['Gulab jamun'] } },
-  { breakfast: { Breakfast: ['Aloo paratha', 'Upma'] }, lunch: { Dal: ['Chole', 'Moong dal'], Sabzi: ['Aloo shimla mirch', 'Tinda masala'] }, snacks: { Snack: ['Bread pakora', 'Vada pav'] }, dinner: { Dal: ['Masoor dal'], Sabzi: ['Kaddu', 'Aloo methi'] } },
-  { breakfast: { Breakfast: ['Poha', 'Aloo paratha'] }, lunch: { Dal: ['Rajma', 'Arhar dal'], Sabzi: ['Baingan bharta', 'Aloo methi'] }, snacks: { Snack: ['Veg sandwich', 'Samosa'] }, dinner: { Dal: ['Dal tadka'], Special: ['Chicken curry', 'Paneer butter masala'], Sabzi: ['Mix veg', 'Palak aloo'] } },
-  { breakfast: { Breakfast: ['Upma', 'Paneer paratha'] }, lunch: { Dal: ['Kadhi pakora', 'Lobia'], Sabzi: ['Palak aloo', 'Aloo gobhi'] }, snacks: { Snack: ['Vada pav', 'Bread pakora'] }, dinner: { Dal: ['Chana dal'], Sabzi: ['Matar mushroom', 'Aloo jeera'] } },
-  { breakfast: { Breakfast: ['Aloo paratha', 'Paneer paratha'] }, lunch: { Dal: ['Chole', 'Dal makhani'], Sabzi: ['Aloo jeera', 'Mix veg'], Bread: ['Puri'], Sweet: ['Kheer'] }, snacks: { Snack: ['Samosa', 'Vada pav'] }, dinner: { Dal: ['Dal tadka'], Rice: ['Veg pulao'], Side: ['Raita'] } },
+  {
+    breakfast: { Breakfast: ['Aloo paratha', 'Poha', 'Idli sambar'], Side: ['Boiled eggs', 'Sprouts chaat'], Drink: ['Chai', 'Coffee'] },
+    lunch: { Dal: ['Dal tadka', 'Rajma', 'Sambar'], Sabzi: ['Aloo gobhi', 'Bhindi masala', 'Dum aloo'], Side: ['Salad & achar', 'Raita', 'Papad'] },
+    snacks: { Snack: ['Samosa', 'Bread pakora', 'Dhokla'], Drink: ['Chai', 'Coffee', 'Nimbu pani'] },
+    dinner: { Dal: ['Moong dal', 'Dal fry'], Sabzi: ['Mix veg', 'Aloo matar'], Special: ['Matar paneer', 'Egg curry'] },
+  },
+  {
+    breakfast: { Breakfast: ['Poha', 'Upma', 'Besan chilla'], Side: ['Bread butter jam', 'Boiled eggs'], Drink: ['Chai', 'Coffee'] },
+    lunch: { Dal: ['Kadhi pakora', 'Chana dal'], Sabzi: ['Aloo matar', 'Lauki chana', 'Aloo baingan'], Side: ['Salad & achar', 'Masala chaas'] },
+    snacks: { Snack: ['Vada pav', 'Veg sandwich', 'Aloo tikki'], Drink: ['Chai', 'Coffee'] },
+    dinner: { Dal: ['Arhar dal'], Sabzi: ['Aloo jeera', 'Cabbage matar'], Rice: ['Plain rice', 'Khichdi'] },
+  },
+  {
+    breakfast: { Breakfast: ['Paneer paratha', 'Masala dosa', 'Upma'], Side: ['Sprouts chaat', 'Cornflakes with milk'], Drink: ['Chai', 'Coffee'] },
+    lunch: { Dal: ['Dal makhani', 'Mix dal'], Sabzi: ['Soya aloo', 'Cabbage matar', 'Tinda masala'], Rice: ['Jeera rice', 'Lemon rice'] },
+    snacks: { Snack: ['Samosa', 'Veg sandwich', 'Kachori'], Drink: ['Chai', 'Coffee'] },
+    dinner: { Dal: ['Dal tadka'], Special: ['Paneer butter masala', 'Kadhai paneer', 'Egg curry'], Bread: ['Tawa roti', 'Butter naan'], Sweet: ['Gulab jamun', 'Rasgulla'] },
+  },
+  {
+    breakfast: { Breakfast: ['Aloo paratha', 'Uttapam', 'Medu vada'], Side: ['Boiled eggs', 'Bread butter jam'], Drink: ['Chai', 'Coffee'] },
+    lunch: { Dal: ['Chole', 'Moong dal', 'Sambar'], Sabzi: ['Aloo shimla mirch', 'Tinda masala'], Rice: ['Jeera rice', 'Curd rice'] },
+    snacks: { Snack: ['Bread pakora', 'Vada pav', 'Onion pakoda'], Drink: ['Chai', 'Coffee', 'Nimbu pani'] },
+    dinner: { Dal: ['Masoor dal'], Sabzi: ['Kaddu', 'Aloo methi', 'Lauki kofta'], Special: ['Egg bhurji', 'Palak paneer'] },
+  },
+  {
+    breakfast: { Breakfast: ['Poha', 'Gobi paratha', 'Bread omelette', 'Methi thepla'], Drink: ['Chai', 'Coffee', 'Banana shake'] },
+    lunch: { Dal: ['Rajma', 'Arhar dal'], Sabzi: ['Baingan bharta', 'Aloo methi'], Side: ['Salad & achar', 'Raita'] },
+    snacks: { Snack: ['Veg momos', 'Samosa', 'Masala Maggi'], Drink: ['Chai', 'Coffee'] },
+    dinner: { Dal: ['Dal tadka'], Special: ['Chicken curry', 'Paneer butter masala', 'Shahi paneer'], Sabzi: ['Mix veg', 'Palak aloo'], Bread: ['Tawa roti', 'Laccha paratha'] },
+  },
+  {
+    breakfast: { Breakfast: ['Upma', 'Paneer paratha', 'Idli sambar', 'Sabudana khichdi'], Drink: ['Chai', 'Coffee'] },
+    lunch: { Dal: ['Kadhi pakora', 'Lobia'], Sabzi: ['Palak aloo', 'Aloo gobhi'], Rice: ['Jeera rice', 'Veg pulao'], Bread: ['Tawa roti', 'Missi roti'] },
+    snacks: { Snack: ['Vada pav', 'Bread pakora', 'Bhel puri'], Drink: ['Chai', 'Coffee'] },
+    dinner: { Dal: ['Chana dal'], Sabzi: ['Matar mushroom', 'Aloo jeera'], Rice: ['Plain rice', 'Veg biryani'], Sweet: ['Sooji halwa'] },
+  },
+  {
+    breakfast: { Breakfast: ['Chole bhature', 'Puri bhaji', 'Aloo paratha', 'Masala dosa'], Drink: ['Chai', 'Coffee', 'Lassi'] },
+    lunch: { Dal: ['Chole', 'Dal makhani'], Sabzi: ['Aloo jeera', 'Mix veg', 'Malai kofta'], Bread: ['Puri', 'Tawa roti'], Rice: ['Jeera rice', 'Veg pulao'], Sweet: ['Kheer', 'Gajar halwa'] },
+    snacks: { Snack: ['Samosa', 'Pav bhaji', 'Vada pav'], Drink: ['Chai', 'Coffee'] },
+    dinner: { Dal: ['Dal tadka'], Rice: ['Veg pulao', 'Chicken biryani'], Side: ['Raita', 'Papad'], Sweet: ['Jalebi'] },
+  },
 ]
 const LABEL_ORDER = ['Breakfast', 'Snack', 'Dal', 'Sabzi', 'Special', 'Bread', 'Rice', 'Side', 'Sweet', 'Drink']
 const FIXED: Record<Meal, Record<string, string>> = {
@@ -160,7 +245,7 @@ function buildWeek(weekStart: string, rotate: number, dishByName: Map<string, Di
           week_id: week.id,
           day,
           meal,
-          label: label === 'Bread' ? (ids.length === 1 && lines[label][0] === 'Tawa roti' ? 'Roti' : 'Bread') : label,
+          label: label === 'Bread' ? (ids.length === 1 && lines[label][0] === 'Tawa roti' ? 'Roti' : 'Bread') : label === 'Side' && meal === 'breakfast' ? 'Extras' : label,
           dish_ids: ids,
           default_dish_id: ids[0],
           position,
@@ -187,7 +272,7 @@ export function createSeed(): DemoDB {
   const rand = rng(42)
 
   const dishes: Dish[] = DISHES.map(([name, category, description, price, premium]) => ({
-    id: `d-${slug(name)}`, name, category, description, price, image_url: PHOTOS[name] ?? '', is_premium: !!premium, is_active: true, created_at: now,
+    id: `d-${slug(name)}`, name, category, description, price, image_url: photoFor(name), is_premium: !!premium, is_active: true, created_at: now,
   }))
   const dishByName = new Map(dishes.map((d) => [d.name, d]))
 

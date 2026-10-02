@@ -7,7 +7,7 @@ import { OTP_REQUIRED } from '../config'
 import { runLocalRpc } from './localRpc'
 import { cleanPhone, phoneEmail } from '../phone'
 
-const KEY = 'radixo-demo-db-v5' // v5: bookings + wallet // v3: four meals, priced menus, custom menus
+const KEY = 'radixo-demo-db-v6' // v6: more dishes with photos; v5: bookings + wallet // v3: four meals, priced menus, custom menus
 const listeners = new Set<(u: { id: string; email: string } | null) => void>()
 
 function load(): DemoDB {
