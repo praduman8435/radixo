@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
-import { ArrowLeft, Check, Copy, Lock, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Lock, Plus, X } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { useAsync } from '../../../lib/useAsync'
 import { loadSettings, savePicks } from '../../../lib/data'
 import { DAY_NAMES, addDays, formatDate, formatWeekRange, mondayOf, today, weekdayIndex } from '../../../lib/dates'
-import { MEAL_NAME, customCharge, customCount, customMeals, customTotal, formatINR, isLocked, mealsLabel, slotCatalog, weekPlanMeals } from '../../../lib/logic'
+import { MEAL_NAME, customCharge, customCount, customMeals, formatINR, isLocked, mealsLabel, slotCatalog, weekPlanMeals } from '../../../lib/logic'
 import { MEALS, slotKey, type CustomMenu, type Dish, type Meal, type MenuItem, type Settings } from '../../../lib/types'
 import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { useToast } from '../../../components/toast'
@@ -57,7 +57,6 @@ export default function MenuCreate() {
   const dishes = q.data?.dishes
   const planMeals = useMemo(() => (q.data?.week && q.data.member && uid ? weekPlanMeals(q.data.member.subs, uid, q.data.week) : []), [q.data, uid])
   const charge = useMemo(() => (dishes ? customCharge(menu, dishes, planMeals) : 0), [menu, dishes, planMeals])
-  const total = useMemo(() => (dishes ? customTotal(menu, dishes) : 0), [menu, dishes])
 
   // A guest tapped Save: once they've logged in (and their plan data reloaded), save straight away.
   useEffect(() => {
@@ -100,7 +99,6 @@ export default function MenuCreate() {
       return out
     })
   }
-  const clearDay = () => setMenu((m) => Object.fromEntries(Object.entries(m).filter(([k]) => !k.startsWith(`${day}-`))))
 
   /** Copy today's dishes to the other days, wherever the kitchen serves the same dish that day. */
   function copyToWeek() {
@@ -147,20 +145,16 @@ export default function MenuCreate() {
 
   return (
     <div className="-mx-4 -mt-4 min-h-[calc(100dvh-64px)] bg-[#0f0b0a] pb-32 text-white sm:-mx-6">
-      {/* Intro + progress */}
+      {/* Intro */}
       <section className="mx-auto max-w-3xl px-4 pt-5 sm:px-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-turmeric">Week of {formatWeekRange(week.week_start)}</p>
-        <h1 className="mt-1 font-display text-[24px] font-bold leading-tight sm:text-[30px]">Build your own menu</h1>
-        <p className="mt-1 text-sm text-white/50">Pick a day, then add dishes to each meal. You pay only for what you add.</p>
-        <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl bg-white/[0.04] p-3 text-center ring-1 ring-white/10">
-          <div><p className="text-lg font-bold tabular">{daysFilled}<span className="text-sm font-medium text-white/50">/7</span></p><p className="text-[11px] text-white/50">days planned</p></div>
-          <div className="border-x border-white/10"><p className="text-lg font-bold tabular">{count}</p><p className="text-[11px] text-white/50">dishes added</p></div>
-          <div><p className="text-lg font-bold tabular">{formatINR(total)}</p><p className="text-[11px] text-white/50">week total</p></div>
-        </div>
+        <h1 className="hidden font-display text-[28px] font-bold leading-tight md:block">Build your own menu</h1>
+        <p className="mt-1 text-sm text-white/50">
+          {formatWeekRange(week.week_start)}{count > 0 ? ` · ${daysFilled} of 7 days planned · ${count} dish${count === 1 ? '' : 'es'}` : ' · pick a day and add dishes'}
+        </p>
       </section>
 
       {/* Day picker */}
-      <div className="sticky top-16 z-20 mt-4 bg-[#0f0b0a]/90 px-3 py-3 backdrop-blur sm:top-[72px] sm:px-6">
+      <div className="sticky top-16 z-20 mt-3 bg-[#0f0b0a]/90 px-3 py-3 backdrop-blur sm:top-[72px] sm:px-6">
         <div className="mx-auto grid max-w-3xl grid-cols-7 gap-1 rounded-2xl bg-white/[0.05] p-1 ring-1 ring-white/10" role="tablist" aria-label="Day">
           {DAY_NAMES.map((n, i) => {
             const d = addDays(week.week_start, i)
@@ -188,61 +182,56 @@ export default function MenuCreate() {
           if (Math.abs(dx) > 60) changeDay(day + (dx < 0 ? 1 : -1))
         }}
       >
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <div>
-            <h2 className="font-display text-[22px] font-bold leading-tight">{date === today() ? 'Today' : DAY_NAMES[day]}</h2>
-            <p className="text-xs text-white/50">{formatDate(date, { weekday: date === today() })}</p>
-          </div>
+        <div className="mb-3 flex items-baseline justify-between gap-2">
+          <h2 className="text-[17px] font-semibold">{date === today() ? 'Today' : DAY_NAMES[day]}, <span className="font-normal text-white/50">{formatDate(date)}</span></h2>
           {dayCount(menu, day) > 0 && (
-            <div className="flex gap-1.5">
-              <button type="button" onClick={copyToWeek} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-white/[0.06] px-3 text-xs font-semibold ring-1 ring-white/10 hover:bg-white/10"><Copy className="size-3.5" /> Copy to week</button>
-              <button type="button" onClick={clearDay} className="grid size-8 place-items-center rounded-full bg-white/[0.06] text-white/50 ring-1 ring-white/10 hover:text-white" aria-label="Clear this day"><Trash2 className="size-3.5" /></button>
-            </div>
+            <button type="button" onClick={copyToWeek} className="inline-flex items-center gap-1 text-xs font-semibold text-white/60 hover:text-white"><Copy className="size-3.5" /> Copy to all days</button>
           )}
         </div>
 
         <div key={day} className={cx('space-y-3', dir > 0 ? 'day-in-right' : 'day-in-left')}>
-          {MEALS.map((meal) => {
-            const offered = slotCatalog(items, day, meal)
+          {MEALS.filter((meal) => slotCatalog(items, day, meal).length > 0).map((meal) => {
             const chosen = (menu[slotKey(day, meal)] ?? []).map((id) => dishes!.get(id)).filter((x): x is Dish => !!x)
             const sub = chosen.reduce((s, d) => s + d.price, 0)
             const inPlan = planMeals.includes(meal)
+            if (chosen.length === 0) {
+              return (
+                <button key={meal} type="button" onClick={() => setPicker(meal)} className="group flex w-full items-center gap-3 rounded-2xl border border-dashed border-white/15 px-4 py-3 text-left transition hover:border-brand/60 hover:bg-white/[0.03]">
+                  <img src={`/meals/${meal}.png`} alt="" className="size-10 rounded-full opacity-80 transition group-hover:opacity-100" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold">{MEAL_NAME[meal]}</span>
+                    <span className="block text-xs text-white/45">{inPlan ? 'In your plan · ' : ''}{timesOf(settings.data, meal)}</span>
+                  </span>
+                  <span className="bg-brand-grad inline-flex h-9 items-center gap-1 rounded-full px-4 text-sm font-semibold text-white shadow-[0_8px_18px_-8px_rgba(222,59,44,0.8)]"><Plus className="size-4" strokeWidth={2.6} /> Add</span>
+                </button>
+              )
+            }
             return (
-              <article key={meal} className={cx('overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-white/10', offered.length ? '' : 'opacity-60')}>
+              <article key={meal} className="overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-white/10">
                 <header className="flex items-center gap-3 px-4 py-3">
                   <img src={`/meals/${meal}.png`} alt="" className="size-10 rounded-full" />
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 font-semibold">{MEAL_NAME[meal]} {inPlan && <span className="rounded-full bg-[#34c759]/15 px-2 py-0.5 text-[10px] font-semibold text-[#34c759]">In your plan</span>}</p>
-                    <p className="text-xs text-white/50">{offered.length ? timesOf(settings.data, meal) : 'Not served this day'}</p>
+                    <p className="font-semibold">{MEAL_NAME[meal]}</p>
+                    <p className="text-xs text-white/45">{inPlan ? 'In your plan · ' : ''}{timesOf(settings.data, meal)}</p>
                   </div>
-                  {offered.length > 0 && (
-                    chosen.length ? (
-                      <span className="text-sm font-semibold tabular text-white/70">{formatINR(sub)}</span>
-                    ) : (
-                      <button type="button" onClick={() => setPicker(meal)} className="inline-flex h-9 items-center gap-1 rounded-full bg-white px-3.5 text-sm font-semibold text-ink hover:bg-white/90"><Plus className="size-4" /> Add</button>
-                    )
-                  )}
+                  <span className="text-sm font-semibold tabular text-white/70">{formatINR(sub)}</span>
                 </header>
-                {chosen.length > 0 && (
-                  <>
-                    <ul className="divide-y divide-white/10 border-t border-white/10">
-                      {chosen.map((d) => (
-                        <li key={d.id} className="flex items-center gap-3 px-4 py-2.5">
-                          <DishImage dish={d} className="size-10 shrink-0 rounded-xl" />
-                          <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{d.name}</span>
-                          <span className="text-sm text-white/50 tabular">{formatINR(d.price)}</span>
-                          <button type="button" onClick={() => toggle(meal, d.id)} className="grid size-7 place-items-center rounded-full text-white/50 hover:bg-white/10 hover:text-white" aria-label={`Remove ${d.name}`}><X className="size-4" /></button>
-                        </li>
-                      ))}
-                    </ul>
-                    <button type="button" onClick={() => setPicker(meal)} className="flex w-full items-center justify-center gap-1.5 border-t border-white/10 py-2.5 text-sm font-semibold text-[#ff8a7a] hover:bg-white/[0.04]"><Plus className="size-4" /> Add more</button>
-                  </>
-                )}
+                <ul className="divide-y divide-white/[0.06] border-t border-white/10">
+                  {chosen.map((d) => (
+                    <li key={d.id} className="flex items-center gap-3 px-4 py-2">
+                      <DishImage dish={d} className="size-9 shrink-0 rounded-lg" />
+                      <span className="min-w-0 flex-1 truncate text-[15px]">{d.name}</span>
+                      <span className="text-sm text-white/45 tabular">{formatINR(d.price)}</span>
+                      <button type="button" onClick={() => toggle(meal, d.id)} className="grid size-7 place-items-center rounded-full text-white/40 hover:bg-white/10 hover:text-white" aria-label={`Remove ${d.name}`}><X className="size-4" /></button>
+                    </li>
+                  ))}
+                </ul>
+                <button type="button" onClick={() => setPicker(meal)} className="flex w-full items-center gap-1.5 border-t border-white/10 px-4 py-2.5 text-sm font-medium text-white/60 hover:bg-white/[0.03] hover:text-white"><Plus className="size-4" /> Add more</button>
               </article>
             )
           })}
+          {MEALS.every((meal) => slotCatalog(items, day, meal).length === 0) && <p className="rounded-2xl bg-white/[0.04] p-6 text-center text-sm text-white/50">The kitchen isn&rsquo;t serving on {DAY_NAMES[day]}.</p>}
         </div>
-        <p className="mt-5 text-center text-xs text-white/50">Swipe left or right to change the day · your picks are saved on this phone</p>
       </section>
 
       {/* Bottom bar */}
