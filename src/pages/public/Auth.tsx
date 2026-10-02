@@ -294,17 +294,24 @@ export function UserLogin() {
   const next = params.get('next') || '/'
   if (!loading && profile?.full_name && profile.role === 'student') return <Navigate to={next} replace />
   return (
-    <div className="min-h-dvh bg-[#f4efe9] md:py-8">
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col overflow-hidden bg-white md:min-h-[720px] md:rounded-[36px] md:shadow-pop">
-        <Link to="/" className="absolute left-4 top-4 z-10 grid size-10 place-items-center rounded-full bg-white/90 text-ink shadow-card hover:bg-sand" aria-label="Back"><ArrowLeft className="size-5" /></Link>
-        <div className="flex flex-col items-center px-6 pt-10">
-          <img src="/radixo-chef.png" alt="Radixo chef" className="animate-float w-36 drop-shadow-[0_12px_18px_rgba(120,30,20,0.18)]" />
-          <h1 className="animate-rise mt-3 font-script-italic text-[34px] text-maroon">Welcome Back</h1>
+    <div className="relative flex min-h-dvh flex-col overflow-hidden bg-[#0d0a09] text-white">
+      <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(90% 55% at 50% 0%, #3a2a27 0%, #171110 55%, #0d0a09 100%)' }} aria-hidden />
+      <div className="pointer-events-none absolute left-1/2 top-24 size-80 -translate-x-1/2 rounded-full bg-brand/20 blur-3xl" aria-hidden />
+      <header className="relative mx-auto flex w-full max-w-md items-center justify-between px-5 pt-5">
+        <Link to="/" className="grid size-9 place-items-center rounded-full bg-white/[0.07] text-white/85 hover:bg-white/15" aria-label="Back"><ArrowLeft className="size-[18px]" /></Link>
+        <Link to="/menu" className="text-sm font-semibold text-white/60 hover:text-white">Browse menus</Link>
+      </header>
+      <div className="relative mx-auto flex w-full max-w-md flex-1 flex-col px-6 pb-8">
+        <div className="flex flex-col items-center pt-6">
+          <img src="/radixo-chef.png" alt="Radixo chef" className="animate-float w-28 drop-shadow-[0_16px_28px_rgba(0,0,0,0.6)]" />
+          <h1 className="animate-rise mt-3 font-script text-[40px] leading-none text-brand-grad">Welcome back</h1>
+          <p className="mt-2 text-sm text-white/50">Your menu, your QR pass, your plan.</p>
         </div>
-        <div className="animate-rise mt-6 flex flex-1 flex-col rounded-t-[40px] border-t-[3px] border-maroon/85 bg-white px-7 pb-8 pt-8 shadow-[0_-12px_30px_-18px_rgba(139,26,18,0.35)]">
-          <LoginFlow onDone={() => nav(next, { replace: true })} />
-          <p className="mt-auto pt-8 text-center text-sm text-muted">Radixo team? <Link to="/welcome" className="font-semibold text-brand hover:underline">Owner &amp; staff login</Link></p>
+        <div className="animate-rise relative mt-8 overflow-hidden rounded-[24px] bg-white/[0.04] p-6 ring-1 ring-white/10 backdrop-blur-sm" style={{ animationDelay: '80ms' }}>
+          <span className="bg-brand-grad absolute inset-x-0 top-0 h-[3px]" aria-hidden />
+          <LoginFlow dark compact hideLogo onDone={() => nav(next, { replace: true })} />
         </div>
+        <p className="mt-auto pt-10 text-center text-xs text-white/40">Radixo team? <Link to="/welcome" className="font-semibold text-white/70 hover:text-white">Owner &amp; staff login</Link></p>
       </div>
     </div>
   )
