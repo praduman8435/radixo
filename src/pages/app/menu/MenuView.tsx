@@ -12,6 +12,7 @@ import { DishImage } from '../../../components/DishImage'
 import { useToast } from '../../../components/toast'
 import { useLoginGate } from '../../../components/LoginSheet'
 import { readDraft, useMenuData } from './useMenuData'
+import { darkPaper } from '../../../components/menu'
 
 const PACK_PHOTOS = ['/photos/thali-classic.jpg', '/photos/thali-fullday.jpg', '/photos/thali-protein.jpg', '/photos/thali-light.jpg']
 const timesOf = (s: Settings | undefined, m: Meal) => (s ? { breakfast: s.breakfast_time, lunch: s.lunch_time, snacks: s.snacks_time, dinner: s.dinner_time }[m] : '')
@@ -104,18 +105,23 @@ export default function MenuView() {
 
   return (
     <div className="-mx-4 -mt-4 bg-[#f7f3ee] pb-32 sm:-mx-6">
-      {/* Hero */}
-      <section className="relative h-[300px] overflow-hidden sm:h-[360px]">
-        <img src={photo} alt="" className="absolute inset-0 size-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#120d0c] via-[#120d0c]/55 to-[#120d0c]/10" aria-hidden />
-        <div className="relative mx-auto flex h-full max-w-3xl flex-col justify-end px-5 pb-6 text-white sm:px-6">
-          <Link to="/menu" className="absolute left-5 top-5 hidden items-center gap-1.5 rounded-full bg-black/40 px-3 py-1.5 text-sm font-semibold backdrop-blur hover:bg-black/55 md:inline-flex"><ArrowLeft className="size-4" /> All menus</Link>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">{pack ? 'Ready-made week' : 'Your week'} · {formatWeekRange(week.week_start)}</p>
-          <h1 className="mt-1 font-script text-[44px] leading-none sm:text-[56px]">{title}</h1>
-          <p className="mt-2 max-w-md text-sm text-white/75">{subtitle}</p>
-          <div className="mt-4 flex flex-wrap items-center gap-1.5">
-            {dayMeals.map((m) => <span key={m} className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold backdrop-blur">{MEAL_NAME[m]}</span>)}
-            {price > 0 && <span className="ml-1 text-xs text-white/60">· {formatINR(price)} for 7 days{pack ? ` · ≈ ${formatINR(price / (7 * Math.max(1, meals.length)))} a meal` : ''}</span>}
+      {/* Hero: dark brand background, photo as its own card, text on solid dark */}
+      <section className="relative overflow-hidden bg-[#120d0c] text-white" style={darkPaper}>
+        <div className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-[radial-gradient(circle,rgba(201,52,28,0.35),transparent_65%)]" aria-hidden />
+        <div className="relative mx-auto grid max-w-3xl gap-5 px-5 pb-7 pt-5 sm:grid-cols-[1fr_1.1fr] sm:items-center sm:gap-8 sm:px-6 sm:py-10">
+          <div className="relative overflow-hidden rounded-[22px] shadow-[0_24px_48px_-24px_rgba(0,0,0,0.9)] ring-1 ring-white/10 sm:order-2">
+            <img src={photo} alt={`${title} menu`} className="aspect-[16/10] w-full object-cover" />
+            <span className="absolute right-3 top-3 rounded-full bg-white px-3 py-1 text-sm font-bold text-ink shadow">{formatINR(price)}<span className="text-xs font-medium text-muted"> /week</span></span>
+          </div>
+          <div>
+            <Link to="/menu" className="mb-3 hidden items-center gap-1.5 text-sm font-semibold text-white/70 hover:text-white md:inline-flex"><ArrowLeft className="size-4" /> All menus</Link>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-turmeric">{pack ? 'Ready-made week' : 'Your week'} · {formatWeekRange(week.week_start)}</p>
+            <h1 className="mt-1.5 font-script text-[42px] leading-none sm:text-[54px]">{title}</h1>
+            <p className="mt-2 max-w-md text-[15px] text-white/80">{subtitle}</p>
+            <div className="mt-4 flex flex-wrap items-center gap-1.5">
+              {dayMeals.map((m) => <span key={m} className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold ring-1 ring-white/15">{MEAL_NAME[m]}</span>)}
+            </div>
+            {price > 0 && <p className="mt-3 text-sm text-white/65">{formatINR(price)} for 7 days{pack ? ` · ≈ ${formatINR(price / (7 * Math.max(1, meals.length)))} a meal` : ''}</p>}
           </div>
         </div>
       </section>
