@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Abhaya Libre", Georgia, serif;
+  --font-script: "Lobster", cursive;
+  --font-script-italic: "Lobster Two", "Lobster", cursive;
+  --font-condensed: "Fira Sans Condensed", ui-sans-serif, sans-serif;
+  --font-banner: "Yatra One", "Abhaya Libre", serif;
+
+  --color-cream: #fff8f0;
+  --color-paper: #ffffff;
+  --color-sand: #f6ece1;
+  --color-line: #eadccd;
+  --color-ink: #1f1a17;
+  --color-muted: #6b625b;
+
+  --color-brand: #c9341c;
+  --color-brand-600: #a92a15;
+  --color-brand-50: #fdeee9;
+  --color-brand-100: #fad8cf;
+  --color-maroon: #8b1a12;
+  --color-night: #141010;
+
+  --color-turmeric: #f2b33d;
+  --color-turmeric-50: #fdf4df;
+  --color-leaf: #23794a;
+  --color-leaf-50: #e7f4ec;
+  --color-amber: #9a5806;
+  --color-amber-50: #fdf1dc;
+  --color-sky: #1f5f99;
+  --color-sky-50: #e8f1fa;
+
+  --shadow-card: 0 1px 2px rgb(31 26 23 / 0.04), 0 4px 16px rgb(31 26 23 / 0.06);
+  --shadow-pop: 0 10px 40px rgb(31 26 23 / 0.16);
+}
+
+html {
+  color-scheme: light;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.005em;
+}
+.font-script { font-family: var(--font-script); font-weight: 400; letter-spacing: 0; }
+.font-script-italic { font-family: var(--font-script-italic); font-weight: 700; font-style: italic; letter-spacing: 0; }
+.font-condensed { font-family: var(--font-condensed); }
+.font-banner { font-family: var(--font-banner); letter-spacing: 0.01em; }
+
+/* The red used on buttons and the bottom bar in the Radixo designs */
+.bg-brand-grad { background-image: linear-gradient(180deg, #de3b2c 0%, #b8261b 55%, #93190f 100%); }
+.text-brand-grad {
+  background-image: linear-gradient(180deg, #e2402f 0%, #a61f15 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.shadow-brand { box-shadow: 0 8px 18px -6px rgb(160 28 18 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.18); }
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-rise { animation: rise 0.35s ease-out both; }
+
+@keyframes drawer-in { from { transform: translateX(100%); } to { transform: none; } }
+.drawer-in { animation: drawer-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+@keyframes sheet-up {
+  from { transform: translateY(40px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.sheet-up { animation: sheet-up 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+.animate-spin-slow { animation: spin-slow 80s linear infinite; }
+
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.animate-marquee { animation: marquee 38s linear infinite; }
+
+@keyframes pulse-dot { 0%, 100% { box-shadow: 0 0 0 0 rgb(52 199 89 / 0.6); } 50% { box-shadow: 0 0 0 6px rgb(52 199 89 / 0); } }
+.pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float { animation: float 5s ease-in-out infinite; }
+
+@keyframes steam {
+  0% { opacity: 0; transform: translateY(6px) scaleY(0.8); }
+  40% { opacity: 0.7; }
+  100% { opacity: 0; transform: translateY(-14px) scaleY(1.1); }
+}
+.steam { animation: steam 2.8s ease-in-out infinite; transform-origin: bottom; }
+
+/* Home "Specially for you": the sketch draws in from the top, the note slides in, stars twinkle. */
+.reveal-draw { clip-path: inset(0 0 100% 0); opacity: 0.3; }
+.in-view .reveal-draw { animation: draw 1.8s cubic-bezier(0.22, 0.7, 0.2, 1) forwards; }
+@keyframes draw { to { clip-path: inset(0 0 0 0); opacity: 1; } }
+.reveal-card { opacity: 0; transform: translateX(28px) rotate(2deg); }
+.in-view .reveal-card { animation: card-in 0.8s 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+@keyframes card-in { to { opacity: 1; transform: none; } }
+.twinkle { opacity: 0; font-size: 18px; }
+.in-view .twinkle { animation: twinkle 2.6s ease-in-out infinite; }
+@keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(0.6) rotate(0deg); } 50% { opacity: 1; transform: scale(1.1) rotate(25deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-draw, .reveal-card, .twinkle { opacity: 1 !important; clip-path: none !important; transform: none !important; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}
