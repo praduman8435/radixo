@@ -115,11 +115,6 @@ function Hero({ name, live, next, settings, fromPrice, chips }: { name?: string;
               See this week <ArrowRight className="size-4" />
             </Link>
           </div>
-          <ul className="animate-rise mt-8 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-white/55" style={{ animationDelay: '240ms' }}>
-            <li className="flex items-center gap-1.5"><CheckCircle2 className="size-4 text-[#34c759]" /> 4 meals a day</li>
-            <li className="flex items-center gap-1.5"><CheckCircle2 className="size-4 text-[#34c759]" /> New menu every week</li>
-            <li className="flex items-center gap-1.5"><CheckCircle2 className="size-4 text-[#34c759]" /> Pause when you go home</li>
-          </ul>
         </div>
 
         <div className="relative mx-auto w-full max-w-[460px]">
