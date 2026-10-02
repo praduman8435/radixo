@@ -1,64 +1,39 @@
-import { useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { CheckCircle2, Clock3, Lock, SquareArrowOutUpRight } from 'lucide-react'
+import { Check, Clock3, Eye, Lock, RotateCcw, Sparkles, Wand2, X } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { savePicks } from '../../../lib/data'
-import { formatDateTime, formatWeekRange, timeUntil } from '../../../lib/dates'
-import { MEAL_NAME, customCharge, customCount, customMeals, customTotal, formatINR, isLocked, weekPlanMeals } from '../../../lib/logic'
-import { MEALS, type Meal, type Pack } from '../../../lib/types'
-import { EmptyState, ErrorNote, PageLoader } from '../../../components/ui'
+import { formatDateTime, formatWeekRange, mondayOf, timeUntil, today, weekdayIndex } from '../../../lib/dates'
+import { MEAL_NAME, customCharge, customCount, customMeals, customTotal, dishesFor, formatINR, isLocked, mealsLabel, weekPlanMeals } from '../../../lib/logic'
+import { MEALS, type Dish, type Meal, type MenuItem, type Pack, type Selection } from '../../../lib/types'
+import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { useToast } from '../../../components/toast'
-import { BookIcon, TapIcon, darkPaper } from '../../../components/menu'
-import { useMenuData } from './useMenuData'
+import { useLoginGate } from '../../../components/LoginSheet'
+import { readDraft, useMenuData } from './useMenuData'
 
-function Zigzag() {
-  return (
-    <svg viewBox="0 0 400 40" preserveAspectRatio="none" className="block h-10 w-full" aria-hidden>
-      <defs>
-        <linearGradient id="zz" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#b8261b" />
-          <stop offset="1" stopColor="#3a0805" />
-        </linearGradient>
-      </defs>
-      <path d="M0 40 L0 22 L33 6 L66 22 L100 6 L133 22 L166 6 L200 22 L233 6 L266 22 L300 6 L333 22 L366 6 L400 22 L400 40 Z" fill="url(#zz)" />
-    </svg>
-  )
-}
+const PACK_PHOTOS = ['/photos/thali-classic.jpg', '/photos/thali-fullday.jpg', '/photos/thali-protein.jpg', '/photos/thali-light.jpg']
+const SWIPE_AT = 110 // px of drag that counts as a swipe
 
-function SectionTab({ children }: { children: string }) {
-  return (
-    <div className="relative z-10 -mt-1 rounded-b-[22px] border-x-2 border-b-[3px] border-maroon bg-white py-3 text-center shadow-[0_10px_18px_-12px_rgba(139,26,18,0.6)]">
-      <p className="font-display text-[21px] font-bold text-maroon">{children}</p>
-    </div>
-  )
-}
+type Card =
+  | { kind: 'mine'; key: string; title: string; photo: string; price: number; meals: Meal[]; sel: Selection; due: number }
+  | { kind: 'pack'; key: string; title: string; photo: string; price: number; meals: Meal[]; pack: Pack; sel: Selection }
+  | { kind: 'create'; key: string }
 
-/** One dark menu card, as in the design: name, weekly price, "see the menu", meals, Book Now. */
-function MenuCard({ name, price, meals, viewTo, footer, selected, delay = 0 }: { name: string; price: number; meals: Meal[]; viewTo: string; footer: ReactNode; selected?: boolean; delay?: number }) {
+/** A short look at one day of a menu: "Lunch · Rajma, Aloo gobhi, Roti". */
+function Preview({ items, sel, meals, dishes, day }: { items: MenuItem[]; sel: Selection; meals: Meal[]; dishes: Map<string, Dish>; day: number }) {
+  const rows = MEALS.filter((m) => meals.includes(m))
+    .map((m) => ({ m, names: dishesFor(items, day, m, sel).map((d) => dishes.get(d)?.name).filter(Boolean) as string[] }))
+    .filter((r) => r.names.length)
   return (
-    <article className="animate-rise mx-auto w-full max-w-sm overflow-hidden rounded-[22px] shadow-[0_18px_30px_-16px_rgba(0,0,0,0.7)]" style={{ ...darkPaper, animationDelay: `${delay}ms` }}>
-      <div className="px-5 pt-5">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="min-w-0 truncate pb-1 font-script text-[40px] leading-none" style={{ backgroundImage: 'linear-gradient(180deg, #ffffff 30%, #a9a3a1)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{name}</h3>
-          <span className="bg-brand-grad shadow-brand flex items-center gap-2 rounded-2xl px-5 py-2">
-            <span className="font-display text-2xl font-bold text-turmeric">₹</span>
-            <span className="font-script-italic text-[22px] text-white tabular">{price.toLocaleString('en-IN')}</span>
-          </span>
-        </div>
-        <div className="mt-4 h-1 rounded-full bg-gradient-to-r from-brand via-maroon to-transparent" />
-        <Link to={viewTo} className="mx-auto mt-4 flex w-fit items-center gap-2 rounded-full bg-white px-5 py-1.5 font-display text-[15px] font-bold text-ink transition hover:scale-[1.03] active:scale-[0.97]">
-          <TapIcon className="size-4" /> see the menu
-        </Link>
-        <div className="my-5 flex items-center gap-4">
-          <div className="bg-brand-grad rounded-2xl px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
-            {MEALS.filter((m) => meals.includes(m)).map((m) => <p key={m} className="font-display text-[18px] font-bold leading-snug text-white">{MEAL_NAME[m]}</p>)}
-          </div>
-          <p className="flex-1 text-center font-script-italic text-[20px] text-white">( for 7 days )</p>
-        </div>
-      </div>
-      {selected && <p className="flex items-center justify-center gap-1.5 bg-leaf/90 py-1.5 text-sm font-bold text-white"><CheckCircle2 className="size-4" /> Your menu this week</p>}
-      {footer}
-    </article>
+    <ul className="space-y-1.5">
+      {rows.slice(0, rows.length > 3 ? 2 : 3).map(({ m, names }) => (
+        <li key={m} className="flex gap-2 text-[13px] leading-snug">
+          <span className="w-[70px] shrink-0 font-semibold text-white">{MEAL_NAME[m]}</span>
+          <span className="line-clamp-1 text-white/60">{names.join(', ')}</span>
+        </li>
+      ))}
+      {rows.length > 3 && <li className="text-xs text-white/40">+ {rows.length - 2} more meals</li>}
+    </ul>
   )
 }
 
@@ -67,107 +42,264 @@ export default function MenuHome() {
   const uid = profile?.role === 'student' ? profile.id : null
   const toast = useToast()
   const nav = useNavigate()
+  const { requireLogin } = useLoginGate()
   const q = useMenuData(uid)
-  const [busy, setBusy] = useState<string | null>(null)
+
+  const [idx, setIdx] = useState(0)
+  const [drag, setDrag] = useState({ x: 0, y: 0, active: false })
+  const [fly, setFly] = useState<0 | 1 | -1>(0)
+  const [busy, setBusy] = useState(false)
+  const start = useRef<{ x: number; y: number } | null>(null)
+
+  const data = q.data
+  const week = data?.week
+  const locked = week ? isLocked(week) : true
+  const planMeals = week && data?.member && uid ? weekPlanMeals(data.member.subs, uid, week) : []
+  const covered = planMeals.length > 0
+  const thisWeek = !!week && week.week_start === mondayOf(today())
+  const previewDay = thisWeek ? weekdayIndex(today()) : 0
+
+  const cards: Card[] = []
+  if (data && week) {
+    const custom = data.selection?.mode === 'custom' ? data.selection.custom : readDraft(week.id)
+    if (custom && customCount(custom) > 0) {
+      const sel: Selection = { id: '', user_id: uid ?? '', week_id: week.id, mode: 'custom', pack_id: null, picks: {}, custom, updated_at: '' }
+      cards.push({ kind: 'mine', key: 'mine', title: 'My Menu', photo: '/photos/served.jpg', price: customTotal(custom, data.dishes), meals: customMeals(custom), sel, due: customCharge(custom, data.dishes, planMeals) })
+    }
+    data.packs.filter((p) => p.price > 0).forEach((p, i) =>
+      cards.push({ kind: 'pack', key: p.id, title: p.name, photo: PACK_PHOTOS[i % PACK_PHOTOS.length], price: p.price, meals: p.meals, pack: p, sel: { id: '', user_id: '', week_id: week.id, mode: 'pack', pack_id: p.id, picks: p.picks, custom: {}, updated_at: '' } }),
+    )
+    cards.push({ kind: 'create', key: 'create' })
+  }
+  const done = idx >= cards.length
+  const top = cards[idx]
+
+  const isMine = (c: Card) => c.kind === 'pack' && data?.selection?.mode === 'pack' && data.selection.pack_id === c.pack.id
+
+  /** Swipe right / ✓: choose (free within a plan), book (pay for the week), or open the builder. */
+  const accept = useCallback(async (c: Card) => {
+    if (!week) return
+    if (c.kind === 'create') return nav('/menu/create')
+    if (c.kind === 'mine') return c.due > 0 && !locked ? nav(`/wallet?custom=${week.id}`) : nav('/menu/view/mine')
+    if (locked) return nav(`/menu/view/${c.pack.id}`)
+    const free = covered && c.meals.every((m) => planMeals.includes(m))
+    if (!free) return nav(`/wallet?pack=${c.pack.id}`)
+    const save = async () => {
+      setBusy(true)
+      try {
+        await savePicks(uid!, week.id, 'pack', c.pack.id, c.pack.picks)
+        toast(`${c.title} is your menu for ${formatWeekRange(week.week_start)}`)
+        q.reload()
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Could not save', 'error')
+      } finally {
+        setBusy(false)
+      }
+    }
+    if (!uid) requireLogin('Log in to choose this menu.', () => void save())
+    else await save()
+  }, [week, locked, covered, planMeals, uid, nav, toast, q, requireLogin])
+
+  /** Animate the top card off screen, then move to the next (and act on a right swipe). */
+  const swipe = useCallback((dir: 1 | -1) => {
+    const c = cards[idx]
+    if (!c || fly) return
+    setFly(dir)
+    window.setTimeout(() => {
+      setFly(0)
+      setDrag({ x: 0, y: 0, active: false })
+      setIdx((i) => i + 1)
+      if (dir === 1) void accept(c)
+    }, 260)
+  }, [cards, idx, fly, accept])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest('input,textarea,select')) return
+      if (e.key === 'ArrowRight') swipe(1)
+      if (e.key === 'ArrowLeft') swipe(-1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [swipe])
 
   if (q.loading && !q.data) return <PageLoader />
   if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
-  const { week, packs, dishes, member, selection } = q.data!
-  if (!week) return <EmptyState title="No menu published yet">The kitchen publishes each week&rsquo;s menu by Thursday.</EmptyState>
+  if (!week || !data) return <EmptyState title="No menu published yet">The kitchen publishes each week&rsquo;s menu by Thursday.</EmptyState>
 
-  const locked = isLocked(week)
-  const planMeals = member && uid ? weekPlanMeals(member.subs, uid, week) : []
-  const covered = planMeals.length > 0
-  const freeFor = (meals: Meal[]) => covered && meals.every((m) => planMeals.includes(m))
-  const custom = selection?.mode === 'custom' ? selection.custom : null
-  const bookable = packs.filter((p) => p.price > 0)
-
-  async function book(p: Pack) {
-    if (locked) return
-    if (!freeFor(p.meals)) return nav(`/wallet?pack=${p.id}`)
-    setBusy(p.id)
-    try {
-      await savePicks(uid!, week!.id, 'pack', p.id, p.picks)
-      toast(`${p.name} is your menu for ${formatWeekRange(week!.week_start)}`)
-      q.reload()
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Could not save', 'error')
-    } finally {
-      setBusy(null)
-    }
+  const onDown = (e: RPointerEvent) => {
+    if ((e.target as HTMLElement).closest('a,button')) return
+    start.current = { x: e.clientX, y: e.clientY }
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    setDrag({ x: 0, y: 0, active: true })
+  }
+  const onMove = (e: RPointerEvent) => {
+    if (!start.current) return
+    setDrag({ x: e.clientX - start.current.x, y: (e.clientY - start.current.y) * 0.3, active: true })
+  }
+  const onUp = () => {
+    if (!start.current) return
+    start.current = null
+    if (drag.x > SWIPE_AT) swipe(1)
+    else if (drag.x < -SWIPE_AT) swipe(-1)
+    else setDrag({ x: 0, y: 0, active: false })
   }
 
-  const footerBtn = (label: string, onClick: () => void, disabled = false, loading = false) => (
-    <button type="button" onClick={onClick} disabled={disabled || loading} className="bg-brand-grad flex w-full items-center justify-center gap-2 py-2.5 font-script-italic text-[19px] text-white transition hover:brightness-110 active:brightness-95 disabled:opacity-60">
-      {loading ? 'Saving…' : label} <BookIcon className="size-5" />
-    </button>
-  )
+  const acceptLabel = (c: Card) => {
+    if (c.kind === 'create') return 'Build'
+    if (c.kind === 'mine') return c.due > 0 && !locked ? `Pay ${formatINR(c.due)}` : 'View'
+    if (locked) return 'View'
+    if (isMine(c)) return 'Selected'
+    return covered && c.meals.every((m) => planMeals.includes(m)) ? 'Choose' : 'Book'
+  }
+
+  const dx = fly ? fly * 640 : drag.x
+  const like = Math.max(0, Math.min(1, dx / SWIPE_AT))
+  const nope = Math.max(0, Math.min(1, -dx / SWIPE_AT))
 
   return (
-    <div className="-mx-4 -mt-4 sm:-mx-6 md:mx-auto md:mt-6 md:max-w-3xl md:overflow-hidden md:rounded-[28px]">
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-[#09080d] pt-4 text-white">
-        <div className="pointer-events-none absolute left-1/2 top-1/3 size-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c47a3a]/15 blur-3xl" aria-hidden />
-        <img src="/menu/chef-lineart.jpg" alt="Radixo chef preparing food" className="animate-rise relative mx-auto w-full max-w-md" />
-        <div className="relative -mt-4 flex flex-col items-center gap-3 px-6 pb-6">
-          <div className="flex items-center gap-2 rounded-2xl bg-white/[0.07] px-4 py-2 text-center text-xs font-semibold text-white/80 ring-1 ring-white/10">
-            {locked ? <Lock className="size-4 shrink-0" /> : <Clock3 className="size-4 shrink-0" />}
-            <span>
-              <span className="block text-white">Menu for {formatWeekRange(week.week_start)}</span>
-              {locked ? 'Choices are closed for this week' : `Choose by ${formatDateTime(week.choice_deadline)} · ${timeUntil(week.choice_deadline)}`}
-            </span>
+    <div className="-mx-4 -mt-4 sm:-mx-6">
+      {/* Header band */}
+      <section className="relative overflow-hidden bg-[#120d0c] px-4 pb-24 pt-8 text-white sm:px-6">
+        <img src="/menu/chef-lineart.jpg" alt="" className="pointer-events-none absolute -right-16 bottom-0 w-[340px] opacity-25 [mask-image:linear-gradient(to_left,black_40%,transparent)] sm:right-0 sm:w-[460px] sm:opacity-40" aria-hidden />
+        <div className="relative mx-auto max-w-6xl">
+          <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-medium text-white/75">
+            {locked ? <><Lock className="size-3.5" /> Choices closed for this week</> : <><Clock3 className="size-3.5" /> Choose by {formatDateTime(week.choice_deadline)} · {timeUntil(week.choice_deadline)}</>}
+          </p>
+          <h1 className="mt-4 font-display text-[30px] font-bold leading-tight sm:text-[40px]">Menus for {formatWeekRange(week.week_start)}</h1>
+          <p className="mt-2 max-w-md text-[15px] text-white/60">Swipe through this week&rsquo;s menus. Swipe right to book one, left to see the next, or build your own.</p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link to="/menu/create" className="bg-brand-grad inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)]">
+              <Wand2 className="size-4" /> {data.selection?.mode === 'custom' ? 'Edit my menu' : 'Build your own'}
+            </Link>
+            {covered && <span className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/[0.06] px-4 text-sm text-white/75 ring-1 ring-white/10"><Sparkles className="size-4 text-turmeric" /> Your plan covers {mealsLabel(planMeals).toLowerCase()}</span>}
           </div>
-          <Link
-            to={locked ? '/menu/view/mine' : '/menu/create'}
-            className="animate-rise flex h-11 items-center gap-2 rounded-xl bg-gradient-to-b from-[#a3231a] to-[#4a0b07] px-5 font-display text-[17px] font-bold shadow-[0_10px_24px_-8px_rgba(184,38,27,0.7)] ring-1 ring-white/10 transition hover:brightness-110 active:scale-[0.98]"
-            style={{ animationDelay: '120ms' }}
-          >
-            {locked ? 'See your menu' : custom ? 'Edit your menu' : 'Create a new menu'} <SquareArrowOutUpRight className="size-5" />
-          </Link>
         </div>
-        <Zigzag />
       </section>
 
-      {custom && customCount(custom) > 0 && (
-        <>
-          <SectionTab>Your created menu</SectionTab>
-          <div className="px-4 py-8">
-            <MenuCard
-              name="My Menu"
-              price={customTotal(custom, dishes)}
-              meals={customMeals(custom)}
-              viewTo="/menu/view/mine"
-              selected
-              footer={(() => { const due = customCharge(custom, dishes, planMeals); return footerBtn(due === 0 ? 'Included in your plan' : covered ? `Pay ${formatINR(due)} extra` : 'Book Now', () => due > 0 && nav(`/wallet?custom=${week.id}`), due === 0 || locked) })()}
-            />
-          </div>
-        </>
-      )}
+      {/* Deck */}
+      <section className="relative mx-auto -mt-16 max-w-6xl px-4 pb-16 sm:px-6">
+        <div className="mx-auto w-full max-w-[370px]">
+          <div className="relative h-[500px] select-none" aria-roledescription="carousel" aria-label="Menus">
+            {done ? (
+              <div className="animate-rise absolute inset-0 flex flex-col items-center justify-center rounded-[28px] border border-line bg-white p-8 text-center shadow-[0_30px_60px_-30px_rgba(31,26,23,0.5)]">
+                <span className="grid size-14 place-items-center rounded-full bg-brand-50 text-brand"><Sparkles className="size-7" /></span>
+                <p className="mt-4 font-display text-xl font-bold">You&rsquo;ve seen every menu</p>
+                <p className="mt-1 text-sm text-muted">Go through them again, or build a menu that&rsquo;s exactly yours.</p>
+                <div className="mt-6 flex gap-2">
+                  <button type="button" onClick={() => setIdx(0)} className="inline-flex h-10 items-center gap-1.5 rounded-full border border-line px-4 text-sm font-semibold hover:bg-sand"><RotateCcw className="size-4" /> Start over</button>
+                  <Link to="/menu/create" className="bg-brand-grad inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white"><Wand2 className="size-4" /> Build your own</Link>
+                </div>
+              </div>
+            ) : (
+              cards.slice(idx, idx + 3).reverse().map((c) => {
+                const depth = cards.indexOf(c) - idx // 0 = top
+                const isTop = depth === 0
+                const style = isTop
+                  ? { transform: `translate(${dx}px, ${fly ? -40 : drag.y}px) rotate(${dx / 18}deg)`, transition: drag.active && !fly ? 'none' : 'transform 0.28s cubic-bezier(0.2,0.8,0.2,1)' }
+                  : { transform: `translateY(${depth * 14}px) scale(${1 - depth * 0.05})`, transition: 'transform 0.3s ease', opacity: depth === 2 ? 0.6 : 1 }
+                return (
+                  <article
+                    key={c.key}
+                    style={style}
+                    onPointerDown={isTop ? onDown : undefined}
+                    onPointerMove={isTop ? onMove : undefined}
+                    onPointerUp={isTop ? onUp : undefined}
+                    onPointerCancel={isTop ? onUp : undefined}
+                    className={cx('absolute inset-0 flex touch-pan-y flex-col overflow-hidden rounded-[28px] bg-[#141010] text-white shadow-[0_30px_60px_-28px_rgba(0,0,0,0.85)] ring-1 ring-black/5', isTop && 'cursor-grab active:cursor-grabbing')}
+                    aria-hidden={!isTop}
+                  >
+                    {c.kind === 'create' ? (
+                      <>
+                        <div className="relative h-[280px] shrink-0 overflow-hidden bg-[#09080d]">
+                          <img src="/menu/chef-lineart.jpg" alt="" draggable={false} className="size-full object-cover object-top" />
+                          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#141010] to-transparent" />
+                        </div>
+                        <div className="flex flex-1 flex-col px-6 pb-6">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-turmeric">Your way</p>
+                          <h3 className="mt-1 font-script text-[36px] leading-none">Create your own</h3>
+                          <p className="mt-3 text-sm leading-relaxed text-white/60">Pick dishes for every meal, day by day. You pay only for what you add.</p>
+                          <p className="mt-auto text-xs text-white/40">Swipe right or tap the wand to start</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="relative h-[220px] shrink-0 overflow-hidden">
+                          <img src={c.photo} alt="" draggable={false} className="size-full object-cover" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#141010] via-[#141010]/10 to-transparent" />
+                          <span className="absolute left-4 top-4 rounded-full bg-black/55 px-3 py-1 text-xs font-semibold backdrop-blur">{c.kind === 'mine' ? 'Your menu' : '7 days'}</span>
+                          <span className="absolute right-4 top-4 rounded-full bg-white px-3 py-1 text-sm font-bold text-ink shadow">{formatINR(c.price)}<span className="text-xs font-medium text-muted"> /week</span></span>
+                        </div>
+                        <div className="-mt-6 flex flex-1 flex-col px-6 pb-6">
+                          <h3 className="relative font-script text-[38px] leading-none">{c.title}</h3>
+                          <p className="mt-2 line-clamp-1 text-sm text-white/60">{c.kind === 'pack' ? c.pack.tagline : `${customCount(c.sel.custom)} dish${customCount(c.sel.custom) === 1 ? '' : 'es'} you picked`}</p>
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {MEALS.filter((m) => c.meals.includes(m)).map((m) => <span key={m} className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold">{MEAL_NAME[m]}</span>)}
+                            {c.kind === 'pack' && <span className="rounded-full px-1 py-0.5 text-[11px] text-white/45">≈ {formatINR(c.price / (7 * Math.max(1, c.meals.length)))} a meal</span>}
+                          </div>
+                          <div className="mt-4 border-t border-white/10 pt-3">
+                            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">{thisWeek ? 'Today' : 'Monday'} on this menu</p>
+                            <Preview items={data.items} sel={c.sel} meals={c.meals} dishes={data.dishes} day={previewDay} />
+                          </div>
+                          <div className="mt-auto flex items-center justify-between border-t border-white/10 pt-3 text-xs">
+                            {(c.kind === 'pack' && isMine(c)) || (c.kind === 'mine' && covered && c.due === 0) ? (
+                              <span className="flex items-center gap-1.5 font-semibold text-[#34c759]"><Check className="size-4" /> {c.kind === 'mine' ? 'Included in your plan' : 'Your menu this week'}</span>
+                            ) : (
+                              <span className="text-white/45">7 days · {mealsLabel(c.meals).toLowerCase()}</span>
+                            )}
+                            <span className="font-semibold text-white/70">Swipe → {acceptLabel(c).toLowerCase()}</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
 
-      <SectionTab>Choose from the prebuilt menu</SectionTab>
-      <div className="space-y-8 px-4 py-8">
-        {bookable.length === 0 ? (
-          <p className="text-center text-sm text-muted">No ready-made menus this week yet.</p>
-        ) : (
-          bookable.map((p, i) => {
-            const isMine = selection?.mode === 'pack' && selection.pack_id === p.id
-            return (
-              <MenuCard
-                key={p.id}
-                name={p.name}
-                price={p.price}
-                meals={p.meals}
-                viewTo={`/menu/view/${p.id}`}
-                selected={isMine}
-                delay={i * 80}
-                footer={footerBtn(locked ? 'Choices closed' : isMine ? 'Selected' : freeFor(p.meals) ? 'Choose this menu' : 'Book Now', () => book(p), locked || isMine, busy === p.id)}
-              />
-            )
-          })
-        )}
-        {covered && !locked && <p className="text-center text-sm text-muted">Menus within your plan&rsquo;s meals cost nothing extra. Menus with more meals are booked for the week.</p>}
-        {!covered && bookable.length > 0 && <p className="text-center text-sm text-muted">Prices are for the whole week, GST included. {formatINR(bookable[0].price / Math.max(1, bookable[0].meals.length * 7))} a meal on {bookable[0].name}.</p>}
-      </div>
+                    {isTop && (
+                      <>
+                        <span className="pointer-events-none absolute left-5 top-24 -rotate-12 rounded-lg border-[3px] border-[#34c759] bg-black/30 px-3 py-1 text-xl font-black uppercase tracking-wider text-[#34c759]" style={{ opacity: like }}>{acceptLabel(c)}</span>
+                        <span className="pointer-events-none absolute right-5 top-24 rotate-12 rounded-lg border-[3px] border-white bg-black/30 px-3 py-1 text-xl font-black uppercase tracking-wider text-white" style={{ opacity: nope }}>Next</span>
+                      </>
+                    )}
+                  </article>
+                )
+              })
+            )}
+          </div>
+
+          {/* Actions */}
+          {!done && top && (
+            <div className="mt-6 flex items-center justify-center gap-4">
+              <button type="button" onClick={() => swipe(-1)} aria-label="Next menu" className="grid size-14 place-items-center rounded-full bg-white text-ink shadow-[0_12px_24px_-12px_rgba(31,26,23,0.6)] ring-1 ring-line transition hover:scale-105 active:scale-95">
+                <X className="size-6" strokeWidth={2.6} />
+              </button>
+              {top.kind !== 'create' ? (
+                <Link to={top.kind === 'mine' ? '/menu/view/mine' : `/menu/view/${top.pack.id}`} aria-label="See the full menu" className="grid size-11 place-items-center rounded-full bg-white text-ink/70 shadow-[0_10px_20px_-12px_rgba(31,26,23,0.6)] ring-1 ring-line transition hover:scale-105 active:scale-95">
+                  <Eye className="size-5" />
+                </Link>
+              ) : <span className="size-11" aria-hidden />}
+              <button type="button" disabled={busy || (top.kind === 'pack' && isMine(top))} onClick={() => swipe(1)} aria-label={acceptLabel(top)} className="bg-brand-grad grid size-14 place-items-center rounded-full text-white shadow-[0_14px_28px_-12px_rgba(222,59,44,0.9)] transition hover:scale-105 active:scale-95 disabled:opacity-50">
+                {top.kind === 'create' ? <Wand2 className="size-6" /> : <Check className="size-7" strokeWidth={2.8} />}
+              </button>
+            </div>
+          )}
+          {!done && top && <p className="mt-3 text-center text-xs text-muted">{acceptLabel(top)} · swipe or use the buttons · {idx + 1} of {cards.length}</p>}
+
+          {/* Jump to any card */}
+          <div className="no-scrollbar mt-8 flex gap-2 overflow-x-auto sm:justify-center">
+            {cards.map((c, i) => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setIdx(i)}
+                aria-label={c.kind === 'create' ? 'Create your own' : c.title}
+                aria-current={i === idx}
+                className={cx('flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors', i === idx ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink/70 hover:text-ink')}
+              >
+                {c.kind === 'create' ? <><Wand2 className="size-3.5" /> Create</> : c.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   )
 }
