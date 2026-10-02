@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { Check, Clock3, Eye, Lock, RotateCcw, Sparkles, Wand2, X } from 'lucide-react'
+import { Plus, Check, Clock3, Eye, Lock, RotateCcw, X } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { savePicks } from '../../../lib/data'
 import { formatDateTime, formatWeekRange, mondayOf, timeUntil, today, weekdayIndex } from '../../../lib/dates'
@@ -158,7 +158,7 @@ export default function MenuHome() {
   const nope = Math.max(0, Math.min(1, -dx / SWIPE_AT))
 
   return (
-    <div className="-mx-4 -mt-4 sm:-mx-6">
+    <div className="-mx-4 -mb-16 -mt-4 min-h-[calc(100dvh-64px)] bg-[#0f0b0a] text-white sm:-mx-6">
       {/* Header band */}
       <section className="relative overflow-hidden bg-[#120d0c] px-4 pb-24 pt-8 text-white sm:px-6">
         <img src="/menu/chef-lineart.jpg" alt="" className="pointer-events-none absolute -right-16 bottom-0 w-[340px] opacity-25 [mask-image:linear-gradient(to_left,black_40%,transparent)] sm:right-0 sm:w-[460px] sm:opacity-40" aria-hidden />
@@ -170,9 +170,9 @@ export default function MenuHome() {
           <p className="mt-2 max-w-md text-[15px] text-white/60">Swipe through this week&rsquo;s menus. Swipe right to book one, left to see the next, or build your own.</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Link to="/menu/create" className="bg-brand-grad inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)]">
-              <Wand2 className="size-4" /> {data.selection?.mode === 'custom' ? 'Edit my menu' : 'Build your own'}
+              {data.selection?.mode === 'custom' ? 'Edit my menu' : 'Build your own'}
             </Link>
-            {covered && <span className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/[0.06] px-4 text-sm text-white/75 ring-1 ring-white/10"><Sparkles className="size-4 text-turmeric" /> Your plan covers {mealsLabel(planMeals).toLowerCase()}</span>}
+            {covered && <span className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/[0.06] px-4 text-sm text-white/75 ring-1 ring-white/10">Your plan covers {mealsLabel(planMeals).toLowerCase()}</span>}
           </div>
         </div>
       </section>
@@ -182,13 +182,29 @@ export default function MenuHome() {
         <div className="mx-auto w-full max-w-[370px]">
           <div className="relative h-[500px] select-none" aria-roledescription="carousel" aria-label="Menus">
             {done ? (
-              <div className="animate-rise absolute inset-0 flex flex-col items-center justify-center rounded-[28px] border border-line bg-white p-8 text-center shadow-[0_30px_60px_-30px_rgba(31,26,23,0.5)]">
-                <span className="grid size-14 place-items-center rounded-full bg-brand-50 text-brand"><Sparkles className="size-7" /></span>
-                <p className="mt-4 font-display text-xl font-bold">You&rsquo;ve seen every menu</p>
-                <p className="mt-1 text-sm text-muted">Go through them again, or build a menu that&rsquo;s exactly yours.</p>
-                <div className="mt-6 flex gap-2">
-                  <button type="button" onClick={() => setIdx(0)} className="inline-flex h-10 items-center gap-1.5 rounded-full border border-line px-4 text-sm font-semibold hover:bg-sand"><RotateCcw className="size-4" /> Start over</button>
-                  <Link to="/menu/create" className="bg-brand-grad inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white"><Wand2 className="size-4" /> Build your own</Link>
+              <div className="animate-rise absolute inset-0 flex flex-col overflow-hidden rounded-[28px] bg-[#141010] text-white shadow-[0_30px_60px_-28px_rgba(0,0,0,0.85)] ring-1 ring-white/10">
+                <span className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-[radial-gradient(circle,rgba(201,52,28,0.35),transparent_65%)]" aria-hidden />
+                <div className="relative px-6 pt-7">
+                  <p className="text-[20px] font-bold leading-tight">That&rsquo;s every menu this week</p>
+                  <p className="mt-1 text-sm text-white/55">Tap one to look again, or make your own.</p>
+                </div>
+                <ul className="relative mt-5 flex-1 space-y-2 overflow-y-auto px-4">
+                  {cards.flatMap((c) => (c.kind === 'create' ? [] : [c])).map((c) => (
+                    <li key={c.key}>
+                      <button type="button" onClick={() => setIdx(cards.indexOf(c))} className="flex w-full items-center gap-3 rounded-2xl bg-white/[0.04] p-2 pr-3 text-left ring-1 ring-white/[0.07] transition hover:bg-white/[0.08]">
+                        <img src={c.photo} alt="" className="size-12 shrink-0 rounded-xl object-cover" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-semibold">{c.title}</span>
+                          <span className="block truncate text-xs text-white/45">{mealsLabel(c.meals)}</span>
+                        </span>
+                        <span className="text-sm font-semibold tabular text-white/80">{formatINR(c.price)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="relative grid grid-cols-[auto_1fr] gap-2 border-t border-white/10 p-4">
+                  <button type="button" onClick={() => setIdx(0)} className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/[0.07] px-4 text-sm font-semibold text-white/85 ring-1 ring-white/10 hover:bg-white/10"><RotateCcw className="size-4" /> Again</button>
+                  <Link to="/menu/create" className="bg-brand-grad inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-semibold text-white shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)]">Build your own</Link>
                 </div>
               </div>
             ) : (
@@ -268,20 +284,20 @@ export default function MenuHome() {
           {/* Actions */}
           {!done && top && (
             <div className="mt-6 flex items-center justify-center gap-4">
-              <button type="button" onClick={() => swipe(-1)} aria-label="Next menu" className="grid size-14 place-items-center rounded-full bg-white text-ink shadow-[0_12px_24px_-12px_rgba(31,26,23,0.6)] ring-1 ring-line transition hover:scale-105 active:scale-95">
+              <button type="button" onClick={() => swipe(-1)} aria-label="Next menu" className="grid size-14 place-items-center rounded-full bg-white/[0.07] text-white ring-1 ring-white/15 transition hover:scale-105 hover:bg-white/10 active:scale-95">
                 <X className="size-6" strokeWidth={2.6} />
               </button>
               {top.kind !== 'create' ? (
-                <Link to={top.kind === 'mine' ? '/menu/view/mine' : `/menu/view/${top.pack.id}`} aria-label="See the full menu" className="grid size-11 place-items-center rounded-full bg-white text-ink/70 shadow-[0_10px_20px_-12px_rgba(31,26,23,0.6)] ring-1 ring-line transition hover:scale-105 active:scale-95">
+                <Link to={top.kind === 'mine' ? '/menu/view/mine' : `/menu/view/${top.pack.id}`} aria-label="See the full menu" className="grid size-11 place-items-center rounded-full bg-white/[0.07] text-white/75 ring-1 ring-white/15 transition hover:scale-105 hover:bg-white/10 active:scale-95">
                   <Eye className="size-5" />
                 </Link>
               ) : <span className="size-11" aria-hidden />}
               <button type="button" disabled={busy || (top.kind === 'pack' && isMine(top))} onClick={() => swipe(1)} aria-label={acceptLabel(top)} className="bg-brand-grad grid size-14 place-items-center rounded-full text-white shadow-[0_14px_28px_-12px_rgba(222,59,44,0.9)] transition hover:scale-105 active:scale-95 disabled:opacity-50">
-                {top.kind === 'create' ? <Wand2 className="size-6" /> : <Check className="size-7" strokeWidth={2.8} />}
+                {top.kind === 'create' ? <Plus className="size-7" strokeWidth={2.6} /> : <Check className="size-7" strokeWidth={2.8} />}
               </button>
             </div>
           )}
-          {!done && top && <p className="mt-3 text-center text-xs text-muted">{acceptLabel(top)} · swipe or use the buttons · {idx + 1} of {cards.length}</p>}
+          {!done && top && <p className="mt-3 text-center text-xs text-white/45">{acceptLabel(top)} · swipe or use the buttons · {idx + 1} of {cards.length}</p>}
 
           {/* Jump to any card */}
           <div className="no-scrollbar mt-8 flex gap-2 overflow-x-auto sm:justify-center">
@@ -292,9 +308,9 @@ export default function MenuHome() {
                 onClick={() => setIdx(i)}
                 aria-label={c.kind === 'create' ? 'Create your own' : c.title}
                 aria-current={i === idx}
-                className={cx('flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors', i === idx ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink/70 hover:text-ink')}
+                className={cx('flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors', i === idx ? 'border-white bg-white text-ink' : 'border-white/15 bg-white/[0.04] text-white/70 hover:text-white')}
               >
-                {c.kind === 'create' ? <><Wand2 className="size-3.5" /> Create</> : c.title}
+                {c.kind === 'create' ? 'Create your own' : c.title}
               </button>
             ))}
           </div>

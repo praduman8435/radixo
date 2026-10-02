@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { ArrowLeft, Check, Lock, Pencil, Sparkles } from 'lucide-react'
+import { ArrowLeft, Check, Lock, Pencil } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { useAsync } from '../../../lib/useAsync'
 import { loadSettings, savePicks } from '../../../lib/data'
@@ -220,7 +220,7 @@ export default function MenuView() {
               <span className="text-xs text-white/50">{due === 0 && price > 0 ? 'included in your plan' : '/ week'}</span>
             </p>
             <p className="truncate text-xs text-white/50">
-              {locked ? <span className="inline-flex items-center gap-1"><Lock className="size-3" /> Choices closed for this week</span> : due === 0 && price > 0 ? <span className="inline-flex items-center gap-1 text-leaf"><Sparkles className="size-3" /> {mealsLabel(meals)} covered</span> : `${mealsLabel(meals)} · 7 days`}
+              {locked ? <span className="inline-flex items-center gap-1"><Lock className="size-3" /> Choices closed for this week</span> : due === 0 && price > 0 ? <span className="inline-flex items-center gap-1 text-leaf">{mealsLabel(meals)} covered</span> : `${mealsLabel(meals)} · 7 days`}
             </p>
           </div>
           <button type="button" onClick={act} disabled={busy || selected} className="bg-brand-grad inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-5 text-[15px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60">

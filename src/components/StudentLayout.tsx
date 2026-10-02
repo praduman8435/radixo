@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, Link, useLocation } from 'react-router'
-import { ArrowLeft, BookOpen, Home, LogOut, Menu as MenuIcon, MessageCircle, QrCode, Shield, Star, Wallet, Wand2, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, Home, LogOut, Menu as MenuIcon, MessageCircle, Plus, QrCode, Shield, Star, Wallet, X } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useAsync } from '../lib/useAsync'
 import { loadSettings } from '../lib/data'
@@ -58,7 +58,7 @@ export function StudentLayout() {
   }, [drawer])
 
   // Over the dark home hero the header is see-through; everywhere else (and once scrolled) it's solid white.
-  const dark = (isHome && !scrolled) || !!meta.immersive
+  const dark = true // header is dark on every page, like the home page
   const navCls = ({ isActive }: { isActive: boolean }) =>
     cx('rounded-full px-4 py-2 text-[15px] font-semibold transition-colors', dark ? (isActive ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white') : isActive ? 'bg-brand-50 text-brand' : 'text-ink/70 hover:text-ink')
 
@@ -75,7 +75,7 @@ export function StudentLayout() {
 
   return (
     <div className="min-h-dvh overflow-x-clip bg-white">
-      <header className={cx('no-print sticky top-0 z-40 transition-[background,box-shadow] duration-300', dark ? 'border-b border-white/[0.06] bg-[#120d0c]' : 'border-b border-line/70 bg-white/90 shadow-[0_8px_30px_-20px_rgba(31,26,23,0.35)] backdrop-blur-md')}>
+      <header className={cx('no-print sticky top-0 z-40 transition-[background,box-shadow] duration-300', cx('border-b border-white/[0.06] bg-[#120d0c]', scrolled && 'shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]'))}>
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:h-[72px] sm:px-6">
           {meta.back && (
             <Link to={meta.back} aria-label="Back" className="grid size-9 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/15 md:hidden"><ArrowLeft className="size-[18px]" strokeWidth={2.4} /></Link>
@@ -92,7 +92,7 @@ export function StudentLayout() {
               <Link to="/admin" className={cx('hidden items-center gap-1 rounded-full px-3 py-2 text-sm font-semibold lg:flex', dark ? 'text-white/70 hover:text-white' : 'text-muted hover:text-ink')}><Shield className="size-4" /> Admin</Link>
             )}
             <Link to="/menu/create" className="bg-brand-grad shadow-brand hidden h-10 items-center gap-2 rounded-full px-4 text-sm font-bold text-white transition hover:brightness-110 lg:inline-flex">
-              <Wand2 className="size-4" /> Build my menu
+              Build my menu
             </Link>
             {!meta.back && account}
             <button type="button" onClick={() => setDrawer(true)} className={cx('grid size-10 place-items-center rounded-full md:hidden', dark ? 'text-white hover:bg-white/10' : 'text-ink hover:bg-sand')} aria-label="Open menu">
@@ -130,7 +130,7 @@ export function StudentLayout() {
               {[
                 { to: '/', label: 'Home', icon: Home, end: true },
                 { to: '/menu', label: 'This week’s menus', icon: BookOpen, end: true },
-                { to: '/menu/create', label: 'Build your own', icon: Wand2, end: false },
+                { to: '/menu/create', label: 'Build your own', icon: Plus, end: false },
                 { to: '/wallet', label: 'Plans & pricing', icon: Wallet, end: false },
                 ...(user ? [{ to: '/profile', label: 'My QR pass', icon: QrCode, end: false }, { to: '/feedback', label: 'Rate a meal', icon: Star, end: false }] : []),
               ].map(({ to, label, icon: Icon, end }) => (
@@ -146,7 +146,7 @@ export function StudentLayout() {
             </nav>
 
             <div className="border-t border-white/10 px-5 py-4">
-              <Link to="/menu/create" className="bg-brand-grad flex h-10 items-center justify-center gap-2 rounded-full text-sm font-semibold"><Wand2 className="size-4" /> Build my menu</Link>
+              <Link to="/menu/create" className="bg-brand-grad flex h-10 items-center justify-center gap-2 rounded-full text-sm font-semibold">Build my menu</Link>
               <div className="mt-3 flex items-center justify-between text-xs text-white/45">
                 {user ? <button type="button" onClick={() => { void signOut(); setDrawer(false) }} className="inline-flex items-center gap-1.5 hover:text-white"><LogOut className="size-3.5" /> Log out</button> : <span>© Radixo</span>}
                 <Link to="/welcome" className="hover:text-white/80">Team login</Link>

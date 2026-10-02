@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { CalendarClock, CheckCircle2, Hourglass, PauseCircle, Sparkles } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Hourglass, PauseCircle, UtensilsCrossed } from 'lucide-react'
 import { diffDays, formatDate } from '../lib/dates'
 import { formatINR, mealsLabel, paymentLabel, subLabel, type MemberState } from '../lib/logic'
 import type { Pack, Plan } from '../lib/types'
@@ -64,7 +64,7 @@ export function MemberStatus({ state, plans, packs = [], compact }: { state: Mem
       <LinkButton to="/wallet" size="sm">Renew plan</LinkButton>,
     )
   return shell(
-    <Sparkles className="size-6" />, 'bg-brand-50 text-brand', 'Start with a plan',
+    <UtensilsCrossed className="size-6" />, 'bg-brand-50 text-brand', 'Start with a plan',
     <>Try a week for ₹999 or go monthly. Pay by UPI; your pass works once the payment is confirmed.</>,
     <LinkButton to="/wallet" size="sm">See plans</LinkButton>,
   )

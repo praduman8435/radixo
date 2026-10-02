@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { ArrowDown, ArrowRight, CheckCircle2, ChefHat, ChevronDown, Clock3, Hand, MapPin, QrCode, Sparkles } from 'lucide-react'
+import { ArrowDown, ArrowRight, CheckCircle2, ChefHat, ChevronDown, Clock3, Hand, MapPin, QrCode, UtensilsCrossed } from 'lucide-react'
 import { useAuth } from '../../lib/auth'
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
@@ -308,7 +308,7 @@ export default function Home() {
         {isStudent && state ? (
           <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-line/70 bg-white p-4 shadow-[0_20px_40px_-24px_rgba(31,26,23,0.6)] sm:p-5">
             <span className={cx('grid size-11 shrink-0 place-items-center rounded-xl', state.kind === 'active' ? 'bg-leaf-50 text-leaf' : 'bg-brand-50 text-brand')}>
-              {state.kind === 'active' ? <CheckCircle2 className="size-5" /> : <Sparkles className="size-5" />}
+              {state.kind === 'active' ? <CheckCircle2 className="size-5" /> : <UtensilsCrossed className="size-5" />}
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{state.kind === 'active' ? `${state.daysLeft} days left on your plan${state.paused ? ' · paused today' : ''}` : state.kind === 'pending' ? 'Your payment is being checked' : state.kind === 'upcoming' ? `Your plan starts ${formatDate(state.sub.start_date)}` : 'You don’t have a plan yet'}</p>
