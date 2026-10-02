@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { ArrowDown, ArrowRight, CheckCircle2, ChefHat, ChevronDown, Clock3, Hand, MapPin, QrCode, UtensilsCrossed } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, ChefHat, ChevronDown, Clock3, MapPin, QrCode, UtensilsCrossed } from 'lucide-react'
 import { useAuth } from '../../lib/auth'
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
@@ -12,6 +12,7 @@ import { MEAL_NAME, dishesFor, formatINR, isLocked, mealsLabel, memberState, sub
 import { MEALS, type Dish, type Meal, type Pack, type Settings } from '../../lib/types'
 import { PageLoader, cx } from '../../components/ui'
 import { DishImage } from '../../components/DishImage'
+import { Chef } from '../../components/Chef'
 import { darkPaper } from '../../components/menu'
 import { pickWeek } from './menu/useMenuData'
 
@@ -169,7 +170,7 @@ const QUOTES: { text: string; by: string }[] = [
 ]
 const QUOTE_MS = 5000
 
-/** "Specially for you": the chef sketch draws itself in; quotes rotate on their own, or swipe / tap the dots. */
+/** "From our kitchen": the chef beside a rotating line. Auto-advances; swipe, tap the bars or use the arrows. */
 function ChefStory() {
   const [ref, inView] = useInView<HTMLElement>()
   const [idx, setIdx] = useState(0)
@@ -189,75 +190,68 @@ function ChefStory() {
   }, [idx, inView, paused, tick, go])
 
   return (
-    <section ref={ref} className={cx('relative grid grid-cols-[1.1fr_1fr] items-center gap-3 overflow-x-clip py-2 pr-1 md:grid-cols-2 md:gap-12', inView && 'in-view')}>
-      <div className="relative min-w-0">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(closest-side,rgba(201,52,28,0.18),transparent)]" aria-hidden />
-        <img src="/home/chef-sketch.png" alt="Radixo chef serving a plate" className="reveal-draw relative mx-auto w-full max-w-sm opacity-90 invert" />
-        <svg viewBox="0 0 100 60" className="pointer-events-none absolute left-[42%] top-[50%] w-[34%] text-white/30" aria-hidden>
-          {[0, 1, 2].map((i) => <path key={i} className="steam" style={{ animationDelay: `${0.4 + i * 0.7}s` }} d={`M${25 + i * 22} 58c-7-9 7-14 0-24s7-14 0-24`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />)}
-        </svg>
-      </div>
+    <section
+      ref={ref}
+      className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#1f1412] via-[#161010] to-[#100b0a] ring-1 ring-white/10"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onTouchStart={(e) => { touchX.current = e.touches[0].clientX; setPaused(true) }}
+      onTouchEnd={(e) => {
+        const start = touchX.current
+        touchX.current = null
+        setPaused(false)
+        if (start === null) return
+        const dx = e.changedTouches[0].clientX - start
+        if (Math.abs(dx) > 40) go(idx + (dx < 0 ? 1 : -1))
+      }}
+      aria-roledescription="carousel"
+      aria-label="From the Radixo kitchen"
+    >
+      <span className="pointer-events-none absolute -left-24 top-1/2 size-[420px] -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(201,52,28,0.22),transparent_65%)]" aria-hidden />
+      <div className="relative grid items-center gap-2 px-6 py-8 md:grid-cols-[minmax(0,340px)_1fr] md:gap-10 md:px-12 md:py-12">
+        <Chef className="chef-bob mx-auto w-full max-w-[230px] [mask-image:linear-gradient(to_bottom,#000_78%,transparent)] md:max-w-[320px]" />
 
-      <div className="reveal-card min-w-0">
-        <div
-          className="relative cursor-grab touch-pan-y select-none overflow-hidden rounded-2xl bg-white/[0.04] px-5 pb-6 pt-8 shadow-[0_18px_34px_-16px_rgba(0,0,0,0.6)] ring-1 ring-white/10 active:cursor-grabbing md:px-10 md:pb-8 md:pt-12"
-          onMouseEnter={() => setPaused(true)}
-          onMouseLeave={() => setPaused(false)}
-          onTouchStart={(e) => { touchX.current = e.touches[0].clientX; setPaused(true) }}
-          onTouchEnd={(e) => {
-            const start = touchX.current
-            touchX.current = null
-            setPaused(false)
-            if (start === null) return
-            const dx = e.changedTouches[0].clientX - start
-            if (Math.abs(dx) > 40) go(idx + (dx < 0 ? 1 : -1))
-          }}
-          aria-roledescription="carousel"
-          aria-label="Radixo quotes"
-        >
-          <span className="bg-brand-grad absolute inset-x-0 top-0 h-1" aria-hidden />
+        <div className="min-w-0 text-center md:text-left">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ff7a5c]">From our kitchen</p>
 
-          {/* All quotes share one grid cell, so the card keeps the height of the longest one. */}
-          <div className="grid" aria-live="polite">
+          {/* All lines share one grid cell, so the panel keeps the height of the longest one. */}
+          <div className="mt-4 grid" aria-live="polite">
             {QUOTES.map((q, i) => (
               <figure
                 key={q.text}
                 aria-hidden={i !== idx}
                 className={cx(
-                  'col-start-1 row-start-1 flex flex-col items-center justify-center text-center transition-all duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
-                  i === idx ? 'translate-x-0 opacity-100 blur-0' : i === (idx - 1 + QUOTES.length) % QUOTES.length ? '-translate-x-6 opacity-0 blur-[2px]' : 'translate-x-6 opacity-0 blur-[2px]',
+                  'col-start-1 row-start-1 flex flex-col justify-center transition-all duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+                  i === idx ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0',
                 )}
               >
-                <blockquote className="font-script-italic text-[21px] leading-snug text-white sm:text-[28px]">{q.text}</blockquote>
-                <figcaption className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45 sm:text-xs">{q.by}</figcaption>
+                <blockquote className="font-script-italic text-[28px] leading-[1.2] text-white sm:text-[36px] lg:text-[42px]">{q.text}</blockquote>
+                <figcaption className="mt-3 text-sm text-white/50">{q.by}</figcaption>
               </figure>
             ))}
           </div>
 
-          <div className="mt-6 flex items-center justify-center gap-1.5">
-            {QUOTES.map((q, i) => (
-              <button
-                key={q.text}
-                type="button"
-                onClick={() => go(i)}
-                aria-label={`Quote ${i + 1}`}
-                aria-current={i === idx}
-                className={cx('relative h-1.5 overflow-hidden rounded-full transition-all duration-500', i === idx ? 'w-7 bg-white/15' : 'w-1.5 bg-white/15 hover:bg-white/30')}
-              >
-                {i === idx && (
-                  <span
-                    key={`${idx}-${tick}`}
-                    className="quote-progress absolute inset-y-0 left-0 rounded-full bg-brand"
-                    style={{ animationDuration: `${QUOTE_MS}ms`, animationPlayState: paused || !inView ? 'paused' : 'running' }}
-                  />
-                )}
-              </button>
-            ))}
+          <div className="mt-7 flex items-center justify-center gap-4 md:justify-start">
+            <div className="flex items-center gap-1.5">
+              {QUOTES.map((q, i) => (
+                <button key={q.text} type="button" onClick={() => go(i)} aria-label={`Line ${i + 1}`} aria-current={i === idx} className="group grid h-6 place-items-center">
+                  <span className={cx('relative block h-1 overflow-hidden rounded-full bg-white/15 transition-all duration-500', i === idx ? 'w-10' : 'w-4 group-hover:bg-white/30')}>
+                    {i === idx && (
+                      <span
+                        key={`${idx}-${tick}`}
+                        className="quote-progress absolute inset-y-0 left-0 rounded-full bg-[#ff7a5c]"
+                        style={{ animationDuration: `${QUOTE_MS}ms`, animationPlayState: paused || !inView ? 'paused' : 'running' }}
+                      />
+                    )}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="hidden items-center gap-1.5 sm:flex">
+              <button type="button" onClick={() => go(idx - 1)} aria-label="Previous line" className="grid size-8 place-items-center rounded-full bg-white/[0.07] text-white/70 ring-1 ring-white/10 transition hover:bg-white/15 hover:text-white"><ArrowLeft className="size-4" /></button>
+              <button type="button" onClick={() => go(idx + 1)} aria-label="Next line" className="grid size-8 place-items-center rounded-full bg-white/[0.07] text-white/70 ring-1 ring-white/10 transition hover:bg-white/15 hover:text-white"><ArrowRight className="size-4" /></button>
+            </div>
           </div>
-        </div>
-        <div className="mt-3 hidden animate-bounce justify-end pr-3 text-white/50 [animation-duration:2.2s] sm:flex" aria-hidden>
-          <ArrowDown className="size-4" strokeWidth={2.5} />
-          <Hand className="size-6 -rotate-12" strokeWidth={1.6} />
         </div>
       </div>
     </section>

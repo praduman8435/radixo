@@ -122,6 +122,18 @@ body {
 }
 .animate-float { animation: float 5s ease-in-out infinite; }
 
+@keyframes chef-steam {
+  0% { opacity: 0; transform: translateY(8px); }
+  35% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-14px); }
+}
+.chef-steam { animation: chef-steam 2.6s ease-in-out infinite; }
+@keyframes chef-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.chef-bob { animation: chef-bob 5s ease-in-out infinite; }
+
 @keyframes steam {
   0% { opacity: 0; transform: translateY(6px) scaleY(0.8); }
   40% { opacity: 0.7; }
@@ -141,6 +153,7 @@ body {
 @keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(0.6) rotate(0deg); } 50% { opacity: 1; transform: scale(1.1) rotate(25deg); } }
 
 @media (prefers-reduced-motion: reduce) {
+  .chef-steam, .chef-bob { animation: none !important; opacity: 1; }
   .reveal-draw, .reveal-card, .twinkle { opacity: 1 !important; clip-path: none !important; transform: none !important; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
