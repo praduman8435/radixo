@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, Link, useLocation } from 'react-router'
-import { BookOpen, Home, LogOut, Menu as MenuIcon, MessageCircle, QrCode, Shield, Star, Wallet, Wand2, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, Home, LogOut, Menu as MenuIcon, MessageCircle, QrCode, Shield, Star, Wallet, Wand2, X } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useAsync } from '../lib/useAsync'
 import { loadSettings } from '../lib/data'
@@ -78,9 +78,9 @@ export function StudentLayout() {
       <header className={cx('no-print sticky top-0 z-40 transition-[background,box-shadow] duration-300', dark ? 'border-b border-white/[0.06] bg-[#120d0c]' : 'border-b border-line/70 bg-white/90 shadow-[0_8px_30px_-20px_rgba(31,26,23,0.35)] backdrop-blur-md')}>
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:h-[72px] sm:px-6">
           {meta.back && (
-            <Link to={meta.back} aria-label="Back" className="grid size-10 shrink-0 place-items-center rounded-full border-2 border-ink/80 text-ink hover:bg-sand md:hidden"><X className="size-5" strokeWidth={2.6} /></Link>
+            <Link to={meta.back} aria-label="Back" className="grid size-9 shrink-0 place-items-center rounded-full bg-sand text-ink transition hover:bg-line md:hidden"><ArrowLeft className="size-[18px]" strokeWidth={2.4} /></Link>
           )}
-          {meta.back && <h1 className="min-w-0 flex-1 truncate font-banner text-[20px] text-maroon md:hidden">{meta.title}</h1>}
+          {meta.back && <h1 className="min-w-0 flex-1 truncate text-center text-[16px] font-semibold text-ink md:hidden">{meta.title}</h1>}
           <div className={meta.back ? 'hidden md:block' : ''}><Brand light={dark} /></div>
 
           <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="Main">

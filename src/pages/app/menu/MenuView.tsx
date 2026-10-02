@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Lock, Pencil, Sparkles } from 'lucide-react'
+import { ArrowLeft, Check, Lock, Pencil, Sparkles } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { useAsync } from '../../../lib/useAsync'
 import { loadSettings, savePicks } from '../../../lib/data'
@@ -121,22 +121,28 @@ export default function MenuView() {
       </section>
 
       {/* Day picker */}
-      <div className="sticky top-16 z-20 border-b border-line/70 bg-[#f7f3ee]/95 backdrop-blur sm:top-[72px]">
-        <div className="mx-auto flex max-w-3xl items-center gap-1 px-2 py-2.5 sm:px-6">
-          <button type="button" onClick={() => changeDay(day - 1)} disabled={day === 0} className="grid size-9 shrink-0 place-items-center rounded-full text-ink hover:bg-white disabled:opacity-25" aria-label="Previous day"><ChevronLeft className="size-5" /></button>
-          <div className="grid flex-1 grid-cols-7 gap-0.5" role="tablist" aria-label="Day">
-            {DAY_NAMES.map((n, i) => {
-              const d = addDays(week.week_start, i)
-              const on = i === day
-              return (
-                <button key={n} type="button" role="tab" aria-selected={on} onClick={() => changeDay(i)} className={cx('flex flex-col items-center rounded-2xl py-1.5 transition-colors', on ? 'bg-ink text-white shadow-md' : 'text-ink/60 hover:bg-white')}>
-                  <span className="text-[10px] font-semibold uppercase">{d === today() ? 'Today' : n.slice(0, 3)}</span>
-                  <span className="text-[15px] font-bold tabular leading-tight">{Number(d.slice(8))}</span>
-                </button>
-              )
-            })}
-          </div>
-          <button type="button" onClick={() => changeDay(day + 1)} disabled={day === 6} className="grid size-9 shrink-0 place-items-center rounded-full text-ink hover:bg-white disabled:opacity-25" aria-label="Next day"><ChevronRight className="size-5" /></button>
+      <div className="sticky top-16 z-20 bg-[#f7f3ee]/90 px-3 py-3 backdrop-blur sm:top-[72px] sm:px-6">
+        <div className="mx-auto grid max-w-3xl grid-cols-7 gap-1 rounded-2xl bg-white p-1 shadow-[0_8px_24px_-16px_rgba(31,26,23,0.45)] ring-1 ring-line/70" role="tablist" aria-label="Day">
+          {DAY_NAMES.map((n, i) => {
+            const d = addDays(week.week_start, i)
+            const on = i === day
+            const isToday = d === today()
+            const past = d < today()
+            return (
+              <button
+                key={n}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => changeDay(i)}
+                className={cx('relative flex flex-col items-center rounded-xl py-2 transition-all duration-200', on ? 'bg-brand-grad text-white shadow-[0_6px_14px_-6px_rgba(222,59,44,0.8)]' : 'text-ink hover:bg-sand/70', past && !on && 'opacity-40')}
+              >
+                <span className={cx('text-[10px] font-semibold uppercase tracking-wide', on ? 'text-white/80' : 'text-muted')}>{n.slice(0, 3)}</span>
+                <span className="text-[16px] font-bold leading-tight tabular">{Number(d.slice(8))}</span>
+                {isToday && <span className={cx('absolute bottom-1 size-1 rounded-full', on ? 'bg-white' : 'bg-brand')} aria-label="today" />}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -152,8 +158,8 @@ export default function MenuView() {
         }}
       >
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="font-display text-[22px] font-bold">{DAY_NAMES[day]}</h2>
-          <span className="text-sm text-muted">{formatDate(date)}</span>
+          <h2 className="font-display text-[22px] font-bold">{date === today() ? 'Today' : DAY_NAMES[day]}</h2>
+          <span className="text-sm text-muted">{formatDate(date, { weekday: date === today() })}</span>
         </div>
         <div key={day} className={dir > 0 ? 'day-in-right' : 'day-in-left'}>
           {dayMeals.length === 0 ? (
