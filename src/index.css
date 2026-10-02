@@ -89,6 +89,11 @@ body {
 @keyframes quote-progress { from { width: 0; } to { width: 100%; } }
 .quote-progress { animation-name: quote-progress; animation-timing-function: linear; animation-fill-mode: forwards; }
 
+@keyframes day-in-right { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes day-in-left { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+.day-in-right { animation: day-in-right 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.day-in-left { animation: day-in-left 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
 @keyframes drawer-in { from { transform: translateX(100%); } to { transform: none; } }
 .drawer-in { animation: drawer-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 
