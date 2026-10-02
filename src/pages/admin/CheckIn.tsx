@@ -35,7 +35,7 @@ export default function CheckIn() {
   const expected = useMemo(() => {
     if (!q.data) return 0
     const { ops: o, week, items } = q.data
-    return prepSheet({ date: t, meal, week, items, selections: o.selections, subs: o.subs, pauses: o.pauses, attendance: o.attendance, settings: o.settings }).expected
+    return prepSheet({ date: t, meal, week, items, selections: o.selections, subs: o.subs, pauses: o.pauses, attendance: o.attendance, settings: o.settings, packs: o.packs }).expected
   }, [q.data, t, meal])
 
   const matches = useMemo(() => {

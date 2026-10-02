@@ -88,6 +88,12 @@ export function createSupabaseBackend(url: string, anonKey: string): Backend {
       await sb.auth.signOut()
     },
 
+    async rpc<T>(fn: string, args: Record<string, unknown>) {
+      const { data, error } = await sb.rpc(fn, args)
+      fail(error)
+      return data as T
+    },
+
     async list<K extends TableName>(table: K, q: Query<Tables[K]> = {}) {
       let query = sb.from(table).select('*')
       for (const [k, v] of Object.entries(q.eq ?? {})) query = v === null ? query.is(k, null) : query.eq(k, v)

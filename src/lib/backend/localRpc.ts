@@ -1,0 +1,146 @@
+// Demo versions of the server functions in supabase/migrations/002_bookings_wallet.sql (same rules, in memory).
+import { addDays, diffDays, formatDate, mondayOf } from '../dates'
+import { bookingTotal, customMealsOf, customValue, dayValue, discountFor, skipAllowed } from '../booking'
+import type { CustomMenu, Dish, Meal, Payment, Pause, Subscription, Tables, TableName, Week } from '../types'
+
+interface BookingQuote {
+  kind: 'pack' | 'custom'; week_id: string; source: 'pack' | 'custom'; pack_id: string | null; pack_name: string; template: CustomMenu; meals: Meal[]
+  weeks: number; weekly_price: number; discount_pct: number; start_date: string; end_date: string; total: number; label: string
+}
+interface ExtraQuote { kind: 'extra'; week_id: string; total: number; label: string }
+
+type DB = { tables: { [K in TableName]: Tables[K][] }; session: string | null }
+
+const uuid = () => crypto.randomUUID()
+const now = () => new Date().toISOString()
+const durationLabel = (w: number) => ({ 1: '1 week', 4: '1 month', 13: '3 months', 26: '6 months' } as Record<number, string>)[w] ?? `${w} weeks`
+
+function quote(db: DB, uid: string, spec: Record<string, unknown>): BookingQuote | ExtraQuote {
+  const t = db.tables
+  const s = t.settings[0]
+  const dishes = Object.fromEntries(t.dishes.map((d) => [d.id, d])) as Record<string, Dish>
+  const kind = String(spec.kind)
+  const weeks = Math.min(26, Math.max(1, Number(spec.weeks ?? 1)))
+  let week: Week | undefined, weekly: number, meals: Meal[], template: CustomMenu = {}, source: 'pack' | 'custom', name = '', packId: string | null = null
+  if (kind === 'pack') {
+    const pk = t.packs.find((p) => p.id === spec.pack_id)
+    if (!pk || pk.price <= 0) throw new Error('This menu can’t be booked')
+    week = t.weeks.find((w) => w.id === pk.week_id && w.status === 'published')
+    weekly = pk.price; meals = pk.meals; source = 'pack'; name = pk.name; packId = pk.id
+  } else if (kind === 'custom' || kind === 'extra') {
+    week = t.weeks.find((w) => w.id === spec.week_id && w.status === 'published')
+    const sel = t.selections.find((x) => x.user_id === uid && x.week_id === week?.id)
+    if (!sel) throw new Error('Save your menu first')
+    if (kind === 'extra') {
+      const value = sel.mode === 'pack' ? t.packs.find((p) => p.id === sel.pack_id)?.price ?? 0 : customValue(sel.custom, dishes)
+      const credit = t.subscriptions.filter((b) => b.user_id === uid && b.status === 'active' && b.start_date <= week!.week_start && b.end_date >= week!.week_start).reduce((a, b) => a + b.weekly_price, 0)
+      return { kind: 'extra', week_id: week!.id, total: Math.max(0, value - credit), label: `Extra for week of ${formatDate(week!.week_start)}` }
+    }
+    weekly = customValue(sel.custom, dishes)
+    if (weekly <= 0) throw new Error('Add some dishes first')
+    template = sel.custom; source = 'custom'; name = 'My Menu'; meals = customMealsOf(sel.custom)
+  } else throw new Error('Unknown booking')
+  if (!week) throw new Error('That week isn’t open')
+  const disc = discountFor(weeks, s)
+  const lastEnd = t.subscriptions.filter((b) => b.user_id === uid && b.status === 'active' && b.end_date >= week!.week_start).reduce<string | null>((m, b) => (!m || b.end_date > m ? b.end_date : m), null)
+  const start = lastEnd ? mondayOf(addDays(lastEnd, 7)) : week.week_start
+  if (start === week.week_start && new Date(week.choice_deadline).getTime() <= Date.now()) throw new Error('Choices for this week are closed. Book from next week.')
+  return {
+    kind: kind as 'pack' | 'custom', week_id: week.id, source, pack_id: packId, pack_name: name, template, meals, weeks, weekly_price: weekly, discount_pct: disc,
+    start_date: start, end_date: addDays(start, weeks * 7 - 1), total: bookingTotal(weekly, weeks, disc), label: `${name} · ${durationLabel(weeks)}`,
+  }
+}
+
+const balance = (db: DB, uid: string) => db.tables.wallet_txns.filter((x) => x.user_id === uid).reduce((a, x) => a + x.amount, 0)
+
+function createBooking(db: DB, uid: string, q: BookingQuote | ExtraQuote, paymentId: string) {
+  if (q.kind === 'extra') return
+  const sub: Subscription = {
+    id: uuid(), user_id: uid, plan_id: null, pack_id: q.pack_id, payment_id: paymentId, start_date: q.start_date, end_date: q.end_date, meals: q.meals,
+    status: 'active', source: q.source, pack_name: q.pack_name, template: q.template, weeks: q.weeks, weekly_price: q.weekly_price, discount_pct: q.discount_pct, created_at: now(),
+  }
+  db.tables.subscriptions.push(sub)
+  if (q.source === 'pack') {
+    const pk = db.tables.packs.find((p) => p.id === q.pack_id)!
+    const i = db.tables.selections.findIndex((x) => x.user_id === uid && x.week_id === pk.week_id)
+    const row = { id: i >= 0 ? db.tables.selections[i].id : uuid(), user_id: uid, week_id: pk.week_id, mode: 'pack' as const, pack_id: pk.id, picks: pk.picks, custom: {}, updated_at: now() }
+    if (i >= 0) db.tables.selections[i] = row
+    else db.tables.selections.push(row)
+  }
+}
+
+const isAdmin = (db: DB) => db.tables.profiles.find((p) => p.id === db.session)?.role === 'admin'
+
+export function runLocalRpc(db: DB, fn: string, args: Record<string, unknown>): unknown {
+  const uid = db.session
+  if (!uid) throw new Error('Log in first')
+  const t = db.tables
+  const s = t.settings[0]
+
+  if (fn === 'book') {
+    const q = quote(db, uid, args.p_spec as Record<string, unknown>)
+    if (q.total <= 0) throw new Error('Nothing to pay')
+    const used = Math.min(Math.max(balance(db, uid), 0), q.total)
+    const due = q.total - used
+    const utr = String(args.p_utr ?? '').trim()
+    if (due > 0 && !/^\d{12}$/.test(utr)) throw new Error('Enter the 12-digit UPI reference')
+    if (due > 0 && t.payments.some((p) => p.utr === utr)) throw new Error('duplicate key value violates unique constraint "payments_utr_unique"')
+    const pay: Payment = {
+      id: uuid(), user_id: uid, plan_id: null, pack_id: q.kind === 'extra' ? null : q.pack_id, week_id: q.week_id, amount: due, wallet_used: used,
+      method: due === 0 ? 'wallet' : 'upi', utr: due === 0 ? '' : utr, status: due === 0 ? 'approved' : 'pending', admin_note: due === 0 ? 'Paid from wallet' : '',
+      details: q as Payment['details'], created_at: now(), reviewed_at: due === 0 ? now() : null,
+    }
+    t.payments.push(pay)
+    if (used > 0) t.wallet_txns.push({ id: uuid(), user_id: uid, amount: -used, kind: 'payment', note: q.label, ref_id: pay.id, created_at: now() })
+    if (due === 0) createBooking(db, uid, q, pay.id)
+    return pay
+  }
+
+  if (fn === 'approve_payment' || fn === 'reject_payment') {
+    if (!isAdmin(db)) throw new Error('Only the owner can review payments')
+    const pay = t.payments.find((p) => p.id === args.p_id && p.status === 'pending')
+    if (!pay) throw new Error('Payment not found or already reviewed')
+    if (fn === 'approve_payment') {
+      if (pay.details && (pay.details.kind === 'pack' || pay.details.kind === 'custom')) createBooking(db, pay.user_id, pay.details as unknown as BookingQuote, pay.id)
+      Object.assign(pay, { status: 'approved', admin_note: String(args.p_note ?? ''), reviewed_at: now() })
+    } else {
+      if (pay.wallet_used > 0) t.wallet_txns.push({ id: uuid(), user_id: pay.user_id, amount: pay.wallet_used, kind: 'refund', note: 'Payment rejected', ref_id: pay.id, created_at: now() })
+      Object.assign(pay, { status: 'rejected', admin_note: String(args.p_note || 'Payment not found'), reviewed_at: now() })
+    }
+    return pay
+  }
+
+  if (fn === 'mark_skip') {
+    const start = String(args.p_start), end = String(args.p_end)
+    if (end < start) throw new Error('The end date is before the start date')
+    if (diffDays(start, end) > 60) throw new Error('Mark at most 60 days at a time')
+    if (!skipAllowed(start, s.skip_notice_hours)) throw new Error(`Mark it at least ${s.skip_notice_hours} hours before the day starts`)
+    const dishes = new Map(t.dishes.map((d) => [d.id, d]))
+    let credit = 0
+    let first: string | null = null
+    for (let i = 0; i <= diffDays(start, end); i++) {
+      const d = addDays(start, i)
+      if (t.pauses.some((p) => p.user_id === uid && p.status === 'approved' && p.start_date <= d && p.end_date >= d)) continue
+      const b = t.subscriptions.filter((x) => x.user_id === uid && x.status === 'active' && x.source !== 'plan' && x.start_date <= d && x.end_date >= d).sort((a, z) => (a.created_at < z.created_at ? 1 : -1))[0]
+      if (!b) continue
+      credit += dayValue(b, d, dishes)
+      first ??= b.id
+    }
+    if (!first || Math.round(credit) <= 0) throw new Error('You have no booked meals on those days')
+    const r: Pause = { id: uuid(), user_id: uid, subscription_id: first, credit: Math.round(credit), start_date: start, end_date: end, reason: String(args.p_reason ?? ''), status: 'approved', created_at: now() }
+    t.pauses.push(r)
+    t.wallet_txns.push({ id: uuid(), user_id: uid, amount: r.credit, kind: 'skip', note: `Not coming ${formatDate(start)}${end > start ? ` – ${formatDate(end)}` : ''}`, ref_id: r.id, created_at: now() })
+    return r
+  }
+
+  if (fn === 'cancel_skip') {
+    const r = t.pauses.find((p) => p.id === args.p_id && p.user_id === uid && p.status === 'approved')
+    if (!r) throw new Error('Not found')
+    if (!skipAllowed(r.start_date, s.skip_notice_hours)) throw new Error('It’s too late to undo this one')
+    r.status = 'cancelled'
+    t.wallet_txns.push({ id: uuid(), user_id: uid, amount: -r.credit, kind: 'skip_cancelled', note: 'Coming after all', ref_id: r.id, created_at: now() })
+    return r
+  }
+
+  throw new Error(`Unknown function ${fn}`)
+}

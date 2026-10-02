@@ -5,10 +5,11 @@ import { useAuth } from '../../lib/auth'
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
 import { useInView } from '../../lib/useInView'
-import { loadDishMap, loadMember, loadPlans, loadPublishedWeeks, loadSettings, loadWeekContent } from '../../lib/data'
+import { loadDishMap, loadMember, loadPublishedWeeks, loadSettings, loadWeekContent } from '../../lib/data'
+import { DURATIONS, bookingTotal, discountFor, effectiveSelection } from '../../lib/booking'
 import { addDays, currentMeal, formatDate, formatDateTime, formatWeekRange, timeUntil, today, weekdayIndex } from '../../lib/dates'
-import { MEAL_NAME, dishesFor, formatINR, isLocked, mealsLabel, memberState, weekForDate } from '../../lib/logic'
-import { MEALS, type Dish, type Meal, type Plan, type Settings } from '../../lib/types'
+import { MEAL_NAME, dishesFor, formatINR, isLocked, mealsLabel, memberState, subLabel, weekForDate } from '../../lib/logic'
+import { MEALS, type Dish, type Meal, type Pack, type Settings } from '../../lib/types'
 import { PageLoader, cx } from '../../components/ui'
 import { DishImage } from '../../components/DishImage'
 import { darkPaper } from '../../components/menu'
@@ -20,7 +21,7 @@ const PACK_PHOTOS = ['/photos/thali-classic.jpg', '/photos/thali-fullday.jpg', '
 function useHomeData(uid: string | null) {
   return useAsync(async () => {
     const t = today()
-    const [weeks, dishes, plans, settings] = await Promise.all([loadPublishedWeeks(), loadDishMap(), loadPlans(), loadSettings()])
+    const [weeks, dishes, settings] = await Promise.all([loadPublishedWeeks(), loadDishMap(), loadSettings()])
     const thisWeek = weekForDate(weeks, t)
     const openWeek = pickWeek(weeks)
     const [cur, open] = await Promise.all([
@@ -30,7 +31,7 @@ function useHomeData(uid: string | null) {
     const member = uid ? await loadMember(uid) : null
     const selections = uid ? await api.list('selections', { eq: { user_id: uid } }) : []
     const attendance = uid ? await api.list('attendance', { eq: { user_id: uid, date: t } }) : []
-    return { thisWeek, openWeek, cur, open: open ?? (openWeek?.id === thisWeek?.id ? cur : null), dishes, plans, settings, member, selections, attendance }
+    return { thisWeek, openWeek, cur, open: open ?? (openWeek?.id === thisWeek?.id ? cur : null), dishes, settings, member, selections, attendance }
   }, [uid])
 }
 
@@ -42,11 +43,11 @@ function SectionHead({ eyebrow, title, link }: { eyebrow?: string; title: string
   return (
     <div className="mb-5 flex items-end justify-between gap-4">
       <div className="min-w-0">
-        {eyebrow && <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">{eyebrow}</p>}
-        <h2 className="mt-1 truncate font-display text-[22px] font-bold leading-tight sm:text-[28px]">{title}</h2>
+        {eyebrow && <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#ff7a5c]">{eyebrow}</p>}
+        <h2 className="mt-1 truncate font-display text-[22px] font-bold leading-tight text-white sm:text-[28px]">{title}</h2>
       </div>
       {link && (
-        <Link to={link.to} className="group inline-flex shrink-0 items-center gap-1 whitespace-nowrap pb-1 text-sm font-semibold text-brand">
+        <Link to={link.to} className="group inline-flex shrink-0 items-center gap-1 whitespace-nowrap pb-1 text-sm font-semibold text-white/70 hover:text-white">
           {link.label} <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
         </Link>
       )}
@@ -87,7 +88,7 @@ function servingNow(s: Settings): Meal | null {
   return null
 }
 
-const perMeal = (p: Plan) => p.price / (p.duration_days * Math.max(1, p.meals.length))
+const perMeal = (p: Pack) => p.price / (7 * Math.max(1, p.meals.length))
 
 // ---------- sections ----------
 
@@ -151,7 +152,7 @@ function StoryCollage() {
           key={im.src}
           src={im.src}
           alt=""
-          className={cx('absolute aspect-[4/3] rounded-2xl object-cover shadow-[0_24px_40px_-20px_rgba(31,26,23,0.6)] ring-4 ring-white transition-all duration-700 ease-out', im.cls, inView ? 'opacity-100' : 'translate-y-6 opacity-0')}
+          className={cx('absolute aspect-[4/3] rounded-2xl object-cover shadow-[0_24px_40px_-20px_rgba(0,0,0,0.8)] ring-4 ring-[#0f0b0a] transition-all duration-700 ease-out', im.cls, inView ? 'opacity-100' : 'translate-y-6 opacity-0')}
           style={{ transitionDelay: `${im.delay}ms` }}
         />
       ))}
@@ -191,15 +192,15 @@ function ChefStory() {
     <section ref={ref} className={cx('relative grid grid-cols-[1.1fr_1fr] items-center gap-3 overflow-x-clip py-2 pr-1 md:grid-cols-2 md:gap-12', inView && 'in-view')}>
       <div className="relative min-w-0">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(closest-side,rgba(201,52,28,0.18),transparent)]" aria-hidden />
-        <img src="/home/chef-sketch.png" alt="Radixo chef serving a plate" className="reveal-draw relative mx-auto w-full max-w-sm" />
-        <svg viewBox="0 0 100 60" className="pointer-events-none absolute left-[42%] top-[50%] w-[34%] text-ink/30" aria-hidden>
+        <img src="/home/chef-sketch.png" alt="Radixo chef serving a plate" className="reveal-draw relative mx-auto w-full max-w-sm opacity-90 invert" />
+        <svg viewBox="0 0 100 60" className="pointer-events-none absolute left-[42%] top-[50%] w-[34%] text-white/30" aria-hidden>
           {[0, 1, 2].map((i) => <path key={i} className="steam" style={{ animationDelay: `${0.4 + i * 0.7}s` }} d={`M${25 + i * 22} 58c-7-9 7-14 0-24s7-14 0-24`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />)}
         </svg>
       </div>
 
       <div className="reveal-card min-w-0">
         <div
-          className="relative cursor-grab touch-pan-y select-none overflow-hidden rounded-2xl bg-white px-5 pb-6 pt-8 shadow-[0_18px_34px_-16px_rgba(31,26,23,0.4)] ring-1 ring-line/60 active:cursor-grabbing md:px-10 md:pb-8 md:pt-12"
+          className="relative cursor-grab touch-pan-y select-none overflow-hidden rounded-2xl bg-white/[0.04] px-5 pb-6 pt-8 shadow-[0_18px_34px_-16px_rgba(0,0,0,0.6)] ring-1 ring-white/10 active:cursor-grabbing md:px-10 md:pb-8 md:pt-12"
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
           onTouchStart={(e) => { touchX.current = e.touches[0].clientX; setPaused(true) }}
@@ -227,8 +228,8 @@ function ChefStory() {
                   i === idx ? 'translate-x-0 opacity-100 blur-0' : i === (idx - 1 + QUOTES.length) % QUOTES.length ? '-translate-x-6 opacity-0 blur-[2px]' : 'translate-x-6 opacity-0 blur-[2px]',
                 )}
               >
-                <blockquote className="font-script-italic text-[21px] leading-snug text-maroon sm:text-[28px]">{q.text}</blockquote>
-                <figcaption className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted sm:text-xs">{q.by}</figcaption>
+                <blockquote className="font-script-italic text-[21px] leading-snug text-white sm:text-[28px]">{q.text}</blockquote>
+                <figcaption className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45 sm:text-xs">{q.by}</figcaption>
               </figure>
             ))}
           </div>
@@ -241,7 +242,7 @@ function ChefStory() {
                 onClick={() => go(i)}
                 aria-label={`Quote ${i + 1}`}
                 aria-current={i === idx}
-                className={cx('relative h-1.5 overflow-hidden rounded-full transition-all duration-500', i === idx ? 'w-7 bg-line' : 'w-1.5 bg-line hover:bg-muted/50')}
+                className={cx('relative h-1.5 overflow-hidden rounded-full transition-all duration-500', i === idx ? 'w-7 bg-white/15' : 'w-1.5 bg-white/15 hover:bg-white/30')}
               >
                 {i === idx && (
                   <span
@@ -254,7 +255,7 @@ function ChefStory() {
             ))}
           </div>
         </div>
-        <div className="mt-3 hidden animate-bounce justify-end pr-3 text-ink [animation-duration:2.2s] sm:flex" aria-hidden>
+        <div className="mt-3 hidden animate-bounce justify-end pr-3 text-white/50 [animation-duration:2.2s] sm:flex" aria-hidden>
           <ArrowDown className="size-4" strokeWidth={2.5} />
           <Hand className="size-6 -rotate-12" strokeWidth={1.6} />
         </div>
@@ -267,8 +268,9 @@ const FAQ: [string, string][] = [
   ['Do I need an account to see the menu?', 'No. Browse every menu and even build your own. We only ask for your mobile number when you save, book or pay.'],
   ['How does building my own menu work?', 'For every meal the kitchen offers a few dishes. Add the ones you want for each day and the total updates as you go. Prices are per serving and include GST.'],
   ['When do choices close?', 'Saturday 8 pm for the following week, so the kitchen can buy fresh and waste less.'],
-  ['What if I go home for a few days?', 'Pause your monthly plan for 4 days or more and it’s extended by the same number of days.'],
-  ['How do I pay?', 'By UPI: scan the QR or open your UPI app, then paste the reference number. Cash at the counter works too.'],
+  ['Can I book for longer?', 'Yes. Book any menu for 1 week, 1 month, 3 months or 6 months. Longer bookings cost less per week, and your menu carries over each week. Change it any week before Saturday 8 pm.'],
+  ['What if I go home for a few days?', 'Mark the days you’re not coming, at least 24 hours before. The full value of those meals goes to your wallet and pays for your next booking automatically.'],
+  ['How do I pay?', 'By UPI: scan the QR or open your UPI app, then paste the reference number. Cash at the counter goes into your wallet.'],
 ]
 
 // ---------- page ----------
@@ -283,19 +285,18 @@ export default function Home() {
 
   if (q.loading && !q.data) return <PageLoader />
   if (!q.data) return null
-  const { thisWeek, openWeek, cur, open, dishes, plans, settings, member, selections, attendance } = q.data
+  const { thisWeek, openWeek, cur, open, dishes, settings, member, selections, attendance } = q.data
   const t = today()
   const state = member && uid ? memberState(uid, member.subs, member.payments, member.pauses) : null
-  const curSel = selections.find((s) => s.week_id === thisWeek?.id) ?? null
+  const savedCur = selections.find((s) => s.week_id === thisWeek?.id) ?? null
+  const curSel = thisWeek && cur && uid && member ? effectiveSelection({ userId: uid, week: thisWeek, items: cur.items, packs: cur.packs, selection: savedCur, subs: member.subs }) : savedCur
   const openSel = selections.find((s) => s.week_id === openWeek?.id) ?? null
   const live = servingNow(settings)
   const next = live ?? MEALS.find((m) => MEALS.indexOf(m) >= MEALS.indexOf(currentMeal())) ?? 'breakfast'
   const photoDishes = [...new Map([...dishes.values()].filter((x) => x.is_active && x.image_url).sort((a, b) => b.price - a.price).map((x) => [x.image_url, x])).values()]
   const packs = (open?.packs ?? []).filter((p) => p.price > 0)
-  const monthlies = plans.filter((p) => p.duration_days >= 28).sort((a, b) => perMeal(a) - perMeal(b))
-  const fromPrice = Math.round(monthlies[0] ? perMeal(monthlies[0]) : 60)
-  const trial = plans.find((p) => p.duration_days <= 7)
-  const founding = plans.find((p) => p.badge && p.duration_days >= 28)
+  const cheapest = [...packs].sort((a, b) => a.price - b.price)[0]
+  const fromPrice = Math.round(cheapest ? (perMeal(cheapest) * (100 - settings.discount_6m)) / 100 : 60)
   const dayMeals = cur ? MEALS.filter((m) => dishesFor(cur.items, day, m, curSel).length > 0) : []
   const firstName = isStudent ? profile!.full_name.split(' ')[0] : undefined
 
@@ -306,31 +307,33 @@ export default function Home() {
       {/* Status strip */}
       <Container className="relative z-10 -mt-8">
         {isStudent && state ? (
-          <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-line/70 bg-white p-4 shadow-[0_20px_40px_-24px_rgba(31,26,23,0.6)] sm:p-5">
-            <span className={cx('grid size-11 shrink-0 place-items-center rounded-xl', state.kind === 'active' ? 'bg-leaf-50 text-leaf' : 'bg-brand-50 text-brand')}>
-              {state.kind === 'active' ? <CheckCircle2 className="size-5" /> : <UtensilsCrossed className="size-5" />}
+          <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-[#1a1413] p-4 text-white shadow-[0_20px_40px_-24px_rgba(0,0,0,0.9)] ring-1 ring-white/10 sm:p-5">
+            <span className={cx('grid size-11 shrink-0 place-items-center rounded-xl', state.kind === 'active' || state.kind === 'upcoming' ? 'bg-[#34c759]/15 text-[#5ee07f]' : 'bg-brand/15 text-[#ff7a5c]')}>
+              {state.kind === 'active' || state.kind === 'upcoming' ? <CheckCircle2 className="size-5" /> : <UtensilsCrossed className="size-5" />}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold">{state.kind === 'active' ? `${state.daysLeft} days left on your plan${state.paused ? ' · paused today' : ''}` : state.kind === 'pending' ? 'Your payment is being checked' : state.kind === 'upcoming' ? `Your plan starts ${formatDate(state.sub.start_date)}` : 'You don’t have a plan yet'}</p>
-              <p className="truncate text-sm text-muted">
-                {state.kind === 'active' ? `${mealsLabel(state.sub.meals)} · till ${formatDate(state.sub.end_date)}` : 'Book a week or go monthly'}
+              <p className="font-semibold">{state.kind === 'active' ? `${state.daysLeft} days left on your booking${state.paused ? ' · not coming today' : ''}` : state.kind === 'pending' ? 'Your payment is being checked' : state.kind === 'upcoming' ? `Your booking starts ${formatDate(state.sub.start_date)}` : 'Nothing booked yet'}</p>
+              <p className="truncate text-sm text-white/55">
+                {state.kind === 'active' || state.kind === 'upcoming' ? `${subLabel(state.sub)} · ${mealsLabel(state.sub.meals)} · till ${formatDate(state.sub.end_date)}` : state.kind === 'pending' ? 'We’ll confirm it soon, usually within a few hours' : 'Pick a menu and book it for a week or longer'}
                 {openWeek && !isLocked(openWeek) && ` · ${openSel ? 'menu chosen' : 'choose your menu'} for ${formatWeekRange(openWeek.week_start)} (${timeUntil(openWeek.choice_deadline)})`}
               </p>
             </div>
-            {state.kind === 'active' ? (
-              <Link to="/profile" className="inline-flex h-10 items-center gap-1.5 rounded-full bg-ink px-4 text-sm font-semibold text-white"><QrCode className="size-4" /> Show pass</Link>
+            {state.kind === 'pending' ? (
+              <Link to="/wallet" className="inline-flex h-10 items-center rounded-full bg-white/[0.08] px-4 text-sm font-semibold text-white ring-1 ring-white/10">Wallet</Link>
+            ) : state.kind === 'active' || state.kind === 'upcoming' ? (
+              <Link to="/profile" className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-semibold text-ink"><QrCode className="size-4" /> Show pass</Link>
             ) : (
-              <Link to="/wallet" className="bg-brand-grad inline-flex h-10 items-center rounded-full px-4 text-sm font-semibold text-white">See plans</Link>
+              <Link to="/menu" className="bg-brand-grad inline-flex h-10 items-center rounded-full px-4 text-sm font-semibold text-white">See menus</Link>
             )}
           </div>
         ) : openWeek ? (
-          <Link to="/menu" className="group flex items-center gap-4 rounded-2xl border border-line/70 bg-white p-4 shadow-[0_20px_40px_-24px_rgba(31,26,23,0.6)] sm:p-5">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand"><ChefHat className="size-5" /></span>
+          <Link to="/menu" className="group flex items-center gap-4 rounded-2xl bg-[#1a1413] p-4 text-white shadow-[0_20px_40px_-24px_rgba(0,0,0,0.9)] ring-1 ring-white/10 sm:p-5">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand/15 text-[#ff7a5c]"><ChefHat className="size-5" /></span>
             <span className="min-w-0 flex-1">
               <span className="block font-semibold">The menu for {formatWeekRange(openWeek.week_start)} is out</span>
-              <span className="block truncate text-sm text-muted">{isLocked(openWeek) ? 'Choices are closed for this week' : `Choose by ${formatDateTime(openWeek.choice_deadline)} · ${timeUntil(openWeek.choice_deadline)}`}</span>
+              <span className="block truncate text-sm text-white/55">{isLocked(openWeek) ? 'Choices are closed for this week' : `Choose by ${formatDateTime(openWeek.choice_deadline)} · ${timeUntil(openWeek.choice_deadline)}`}</span>
             </span>
-            <ArrowRight className="size-5 shrink-0 text-brand transition group-hover:translate-x-1" />
+            <ArrowRight className="size-5 shrink-0 text-white/60 transition group-hover:translate-x-1" />
           </Link>
         ) : null}
       </Container>
@@ -344,9 +347,9 @@ export default function Home() {
               const on = day === i
               const past = date < t
               return (
-                <button key={date} type="button" role="tab" aria-selected={on} onClick={() => setDay(i)} className={cx('relative flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors', on ? 'bg-ink text-white' : 'bg-sand/70 text-ink/70 hover:bg-sand hover:text-ink', past && !on && 'opacity-45')}>
+                <button key={date} type="button" role="tab" aria-selected={on} onClick={() => setDay(i)} className={cx('relative flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors', on ? 'bg-white text-ink' : 'bg-white/[0.06] text-white/70 hover:bg-white/10 hover:text-white', past && !on && 'opacity-45')}>
                   {date === t ? 'Today' : formatDate(date, { weekday: true }).slice(0, 3)}
-                  <span className={cx('tabular', on ? 'text-white/60' : 'text-muted')}>{Number(date.slice(8))}</span>
+                  <span className={cx('tabular', on ? 'text-ink/45' : 'text-white/35')}>{Number(date.slice(8))}</span>
                 </button>
               )
             })}
@@ -357,7 +360,7 @@ export default function Home() {
               const came = day === weekdayIndex(t) && attendance.some((a) => a.meal === m)
               const nowServing = live === m && day === weekdayIndex(t)
               return (
-                <article key={m} className={cx(railItem, 'flex flex-col overflow-hidden rounded-2xl text-white shadow-[0_18px_30px_-20px_rgba(0,0,0,0.75)]')} style={darkPaper}>
+                <article key={m} className={cx(railItem, 'flex flex-col overflow-hidden rounded-2xl bg-white/[0.04] text-white ring-1 ring-white/10')}>
                   <div className="flex items-center gap-3 px-4 pb-3 pt-4">
                     <img src={`/meals/${m}.png`} alt="" className="size-11 rounded-full ring-2 ring-white/15" />
                     <div className="min-w-0 flex-1">
@@ -388,18 +391,18 @@ export default function Home() {
           <SectionHead eyebrow={`Week of ${formatWeekRange(openWeek.week_start)}`} title="Ready-made weeks" link={{ to: '/menu', label: 'All menus' }} />
           <Rail cols={packs.length >= 4 ? 4 : 3}>
             {packs.map((p, i) => (
-              <article key={p.id} className={cx(railItem, 'group flex flex-col overflow-hidden rounded-2xl border border-line/70 bg-white shadow-[0_18px_34px_-24px_rgba(31,26,23,0.6)]')}>
+              <article key={p.id} className={cx(railItem, 'group flex flex-col overflow-hidden rounded-2xl bg-white/[0.04] text-white ring-1 ring-white/10')}>
                 <div className="relative aspect-[16/10] overflow-hidden">
                   <img src={PACK_PHOTOS[i % PACK_PHOTOS.length]} alt="" loading="lazy" className="size-full object-cover transition duration-500 group-hover:scale-105" />
-                  <span className="absolute right-3 top-3 rounded-full bg-white/95 px-3 py-1 text-sm font-semibold text-ink shadow-sm">{formatINR(p.price)}<span className="text-xs font-medium text-muted"> /week</span></span>
+                  <span className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1 text-sm font-semibold text-white backdrop-blur">{formatINR(p.price)}<span className="text-xs font-medium text-white/60"> /week</span></span>
                 </div>
                 <div className="flex flex-1 flex-col p-4">
-                  <h3 className="font-script text-[26px] leading-none text-maroon">{p.name}</h3>
-                  <p className="mt-2 line-clamp-2 min-h-10 text-sm text-muted">{p.tagline}</p>
-                  <p className="mt-3 text-xs font-medium text-ink/70">{mealsLabel(p.meals)} · ≈ {formatINR(p.price / (7 * Math.max(1, p.meals.length)))} a meal</p>
+                  <h3 className="font-script text-[26px] leading-none text-white">{p.name}</h3>
+                  <p className="mt-2 line-clamp-2 min-h-10 text-sm text-white/55">{p.tagline}</p>
+                  <p className="mt-3 text-xs font-medium text-white/60">{mealsLabel(p.meals)} · ≈ {formatINR(p.price / (7 * Math.max(1, p.meals.length)))} a meal</p>
                   <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
-                    <Link to={`/menu/view/${p.id}`} className="flex h-10 items-center justify-center rounded-full border border-line text-sm font-semibold hover:bg-sand">See menu</Link>
-                    <Link to="/menu" className="bg-brand-grad flex h-10 items-center justify-center rounded-full text-sm font-semibold text-white">Book</Link>
+                    <Link to={`/menu/view/${p.id}`} className="flex h-10 items-center justify-center rounded-full text-sm font-semibold ring-1 ring-white/15 hover:bg-white/[0.06]">See menu</Link>
+                    <Link to={`/wallet?pack=${p.id}`} className="bg-brand-grad flex h-10 items-center justify-center rounded-full text-sm font-semibold text-white">Book</Link>
                   </div>
                 </div>
               </article>
@@ -409,59 +412,52 @@ export default function Home() {
       )}
 
       {/* Build your own — story */}
-      <section className="mt-20 bg-cream/70 py-16">
+      <section className="mt-20 border-y border-white/[0.06] bg-white/[0.02] py-16">
         <Container className="grid items-center gap-10 md:grid-cols-2 md:gap-16">
           <StoryCollage />
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">Build your own week</p>
-            <h2 className="mt-2 font-display text-[26px] font-bold leading-tight sm:text-[34px]">Eat what you actually like.</h2>
-            <p className="mt-4 text-[15px] leading-relaxed text-ink/70">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#ff7a5c]">Build your own week</p>
+            <h2 className="mt-2 font-display text-[26px] font-bold leading-tight text-white sm:text-[34px]">Eat what you actually like.</h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-white/65">
               Most messes decide for you. At Radixo, the kitchen plans a few good options for every meal and you choose: rajma or dal tadka on Monday, paneer on Wednesday, skip what you never touch.
             </p>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink/70">You pay only for what&rsquo;s on your plate, and the kitchen cooks only what&rsquo;s been chosen, so less food goes to waste.</p>
-            <dl className="mt-6 grid grid-cols-3 gap-3 border-y border-line py-4 text-center">
+            <p className="mt-3 text-[15px] leading-relaxed text-white/65">You pay only for what&rsquo;s on your plate, and the kitchen cooks only what&rsquo;s been chosen, so less food goes to waste.</p>
+            <dl className="mt-6 grid grid-cols-3 gap-3 border-y border-white/10 py-4 text-center text-white">
               {[['7', 'days to plan'], ['4', 'meals a day'], ['Sat 8 pm', 'choices close']].map(([v, l]) => (
-                <div key={l}><dt className="sr-only">{l}</dt><dd className="font-display text-xl font-bold">{v}</dd><dd className="text-xs text-muted">{l}</dd></div>
+                <div key={l}><dt className="sr-only">{l}</dt><dd className="font-display text-xl font-bold">{v}</dd><dd className="text-xs text-white/50">{l}</dd></div>
               ))}
             </dl>
-            <Link to="/menu/create" className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-ink px-5 text-[15px] font-semibold text-white transition hover:bg-ink/85">
+            <Link to="/menu/create" className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[15px] font-semibold text-ink transition hover:bg-white/90">
               Start building <ArrowRight className="size-4" />
             </Link>
           </div>
         </Container>
       </section>
 
-      {/* Offers */}
-      {(trial || founding) && (
+      {/* Book longer, pay less */}
+      {cheapest && (
         <Container className="mt-16">
-          <SectionHead eyebrow="Offers" title="Start for less" link={{ to: '/wallet', label: 'All plans' }} />
-          <Rail cols={3}>
-            {trial && (
-              <Link to="/wallet" className={cx(railItem, 'relative flex min-h-[188px] flex-col overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#d63a2b,#7a120b)] p-5 text-white')}>
-                <span className="absolute -right-10 -top-10 size-36 rounded-full bg-white/10" aria-hidden />
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">Try first</p>
-                <p className="mt-1 text-xl font-bold">Trial week</p>
-                <p className="mt-1 text-sm text-white/80">{trial.duration_days} days · {mealsLabel(trial.meals).toLowerCase()}</p>
-                <div className="mt-auto flex items-end justify-between pt-4"><span className="text-2xl font-bold">{formatINR(trial.price)}</span><span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-maroon">Try it</span></div>
-              </Link>
-            )}
-            {founding && (
-              <Link to="/wallet" className={cx(railItem, 'relative flex min-h-[188px] flex-col overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#2a2120,#0d0b0b)] p-5 text-white ring-1 ring-turmeric/30')}>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-turmeric">{founding.badge}</p>
-                <p className="mt-1 text-xl font-bold">Founding batch</p>
-                <p className="mt-1 text-sm text-white/70">Monthly plan at a locked-in price</p>
-                <div className="mt-auto flex items-end justify-between pt-4"><span className="text-2xl font-bold">{formatINR(founding.price)}<span className="text-sm font-medium text-white/55">/mo</span></span><span className="rounded-full bg-turmeric px-3 py-1 text-sm font-semibold text-ink">Join</span></div>
-              </Link>
-            )}
-            <div className={cx(railItem, 'relative flex min-h-[188px] flex-col overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#fdf4df,#f6ece1)] p-5 ring-1 ring-line')}>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber">Better together</p>
-              <p className="mt-1 text-xl font-bold text-maroon">Bring a friend</p>
-              <p className="mt-1 text-sm text-ink/70">Their first week is just {formatINR(trial?.price ?? 999)}.</p>
-              <div className="mt-auto pt-4">
-                <button type="button" onClick={() => navigator.share?.({ title: 'Radixo', text: 'Fresh student meals, and you build your own menu.', url: location.origin }).catch(() => {})} className="rounded-full bg-maroon px-4 py-1.5 text-sm font-semibold text-white">Share</button>
-              </div>
-            </div>
+          <SectionHead eyebrow="Book longer, pay less" title="One menu, any length" link={{ to: '/menu', label: 'Pick a menu' }} />
+          <Rail cols={4}>
+            {DURATIONS.map((d) => {
+              const off = discountFor(d.weeks, settings)
+              const total = bookingTotal(cheapest.price, d.weeks, off)
+              return (
+                <Link key={d.weeks} to={`/wallet?pack=${cheapest.id}&weeks=${d.weeks}`} className={cx(railItem, 'group relative flex min-h-[176px] flex-col overflow-hidden rounded-2xl p-5 text-white ring-1 transition', d.weeks === 26 ? 'bg-[linear-gradient(135deg,#d63a2b,#7a120b)] ring-white/10' : 'bg-white/[0.04] ring-white/10 hover:bg-white/[0.07]')}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[17px] font-semibold">{d.label}</p>
+                    {off > 0 && <span className={cx('rounded-full px-2 py-0.5 text-xs font-bold', d.weeks === 26 ? 'bg-white text-maroon' : 'bg-[#34c759]/15 text-[#5ee07f]')}>{off}% off</span>}
+                  </div>
+                  <p className={cx('mt-1 text-sm', d.weeks === 26 ? 'text-white/80' : 'text-white/50')}>{cheapest.name} · {formatINR(Math.round(total / d.weeks))} a week</p>
+                  <div className="mt-auto flex items-end justify-between pt-4">
+                    <span className="text-2xl font-bold tabular">{formatINR(total)}</span>
+                    <ArrowRight className="size-4 text-white/60 transition group-hover:translate-x-0.5" />
+                  </div>
+                </Link>
+              )
+            })}
           </Rail>
+          <p className="mt-3 text-xs text-white/45">Not coming some days? Mark them 24 hours before and their value goes to your wallet.</p>
         </Container>
       )}
 
@@ -474,36 +470,36 @@ export default function Home() {
       <Container className="mb-20 mt-20 grid gap-10 md:grid-cols-2">
         <div>
           <SectionHead eyebrow="Visit us" title={settings.address ? 'Timings & location' : 'Meal timings'} />
-          <div className="overflow-hidden rounded-2xl border border-line/70 bg-white">
-            <ul className="divide-y divide-line">
+          <div className="overflow-hidden rounded-2xl bg-white/[0.04] text-white ring-1 ring-white/10">
+            <ul className="divide-y divide-white/[0.06]">
               {MEALS.map((m) => (
-                <li key={m} className={cx('flex items-center gap-3 px-4 py-3', live === m && 'bg-leaf-50/70')}>
+                <li key={m} className={cx('flex items-center gap-3 px-4 py-3', live === m && 'bg-[#34c759]/[0.07]')}>
                   <img src={`/meals/${m}.png`} alt="" className="size-9 shrink-0 rounded-full" />
                   <span className="min-w-0 flex-1">
                     <span className="block font-medium">{MEAL_NAME[m]}</span>
-                    {live === m && <span className="block text-xs font-semibold text-leaf">Open now</span>}
+                    {live === m && <span className="block text-xs font-semibold text-[#5ee07f]">Open now</span>}
                   </span>
-                  <span className={cx('shrink-0 whitespace-nowrap text-sm tabular', live === m ? 'font-semibold text-leaf' : 'text-muted')}>{timesOf(settings)[m]}</span>
+                  <span className={cx('shrink-0 whitespace-nowrap text-sm tabular', live === m ? 'font-semibold text-[#5ee07f]' : 'text-white/50')}>{timesOf(settings)[m]}</span>
                 </li>
               ))}
             </ul>
-            {settings.address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.address)}`} target="_blank" rel="noreferrer" className="flex items-start gap-3 border-t border-line bg-cream/70 px-4 py-3.5 text-sm">
-              <MapPin className="mt-0.5 size-4 shrink-0 text-brand" />
-              <span className="min-w-0 flex-1 text-ink/80">{settings.address}</span>
-              <span className="shrink-0 whitespace-nowrap font-semibold text-brand">Directions</span>
+            {settings.address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.address)}`} target="_blank" rel="noreferrer" className="flex items-start gap-3 border-t border-white/[0.06] bg-white/[0.03] px-4 py-3.5 text-sm">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-[#ff7a5c]" />
+              <span className="min-w-0 flex-1 text-white/75">{settings.address}</span>
+              <span className="shrink-0 whitespace-nowrap font-semibold text-white">Directions</span>
             </a>}
           </div>
         </div>
         <div>
           <SectionHead eyebrow="Help" title="Questions" />
-          <div className="divide-y divide-line overflow-hidden rounded-2xl border border-line/70 bg-white">
+          <div className="divide-y divide-white/[0.06] overflow-hidden rounded-2xl bg-white/[0.04] text-white ring-1 ring-white/10">
             {FAQ.map(([question, answer], i) => (
               <div key={question}>
                 <button type="button" onClick={() => setFaq(faq === i ? null : i)} aria-expanded={faq === i} className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left text-[15px] font-medium">
                   {question}
-                  <ChevronDown className={cx('size-4 shrink-0 text-muted transition-transform', faq === i && 'rotate-180')} />
+                  <ChevronDown className={cx('size-4 shrink-0 text-white/45 transition-transform', faq === i && 'rotate-180')} />
                 </button>
-                {faq === i && <p className="animate-rise px-4 pb-4 text-sm leading-relaxed text-muted">{answer}</p>}
+                {faq === i && <p className="animate-rise px-4 pb-4 text-sm leading-relaxed text-white/60">{answer}</p>}
               </div>
             ))}
           </div>

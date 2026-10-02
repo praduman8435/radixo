@@ -5,7 +5,7 @@ import { useAuth } from '../../../lib/auth'
 import { useAsync } from '../../../lib/useAsync'
 import { loadSettings, savePicks } from '../../../lib/data'
 import { DAY_NAMES, addDays, formatDate, formatWeekRange, mondayOf, today, weekdayIndex } from '../../../lib/dates'
-import { MEAL_NAME, customCharge, customCount, customMeals, customTotal, dishesFor, formatINR, isLocked, mealsLabel, weekPlanMeals } from '../../../lib/logic'
+import { MEAL_NAME, customCount, customMeals, customTotal, dishesFor, formatINR, isLocked, mealsLabel } from '../../../lib/logic'
 import { MEALS, type Dish, type Meal, type Selection, type Settings } from '../../../lib/types'
 import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { DishImage } from '../../../components/DishImage'
@@ -39,7 +39,7 @@ export default function MenuView() {
 
   if (q.loading && !q.data) return <PageLoader />
   if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
-  const { week, items, packs, dishes, selection, member } = q.data!
+  const { week, items, packs, dishes, selection } = q.data!
   if (!week) return <EmptyState title="No menu published yet" />
 
   const bookable = packs.filter((p) => p.price > 0)
@@ -54,9 +54,11 @@ export default function MenuView() {
   const mineIsPack = !pack && sel?.mode === 'pack' ? packs.find((p) => p.id === sel.pack_id) : undefined
   const meals = pack ? pack.meals : sel?.mode === 'custom' ? customMeals(sel.custom) : mineIsPack ? mineIsPack.meals : MEALS.filter((m) => items.some((it) => it.meal === m))
   const price = pack ? pack.price : sel?.mode === 'custom' ? customTotal(sel.custom, dishes) : mineIsPack?.price ?? 0
-  const planMeals = member && uid ? weekPlanMeals(member.subs, uid, week) : []
-  const covered = planMeals.length > 0 && meals.every((m) => planMeals.includes(m))
-  const due = !pack && sel?.mode === 'custom' ? customCharge(sel.custom, dishes, planMeals) : covered ? 0 : price
+  const credit = q.data!.credit
+  const booked = credit > 0 // this week is already paid for by a booking
+  const covered = booked && price <= credit
+  const due = booked ? Math.max(0, price - credit) : price
+  const savedCustom = q.data!.saved?.mode === 'custom'
   const locked = isLocked(week)
   const selected = !!pack && selection?.mode === 'pack' && selection.pack_id === pack.id
   const photoPack = pack ?? mineIsPack
@@ -76,16 +78,18 @@ export default function MenuView() {
     if (!week) return
     if (locked) return nav('/menu')
     if (!pack) {
-      if (sel?.mode === 'custom' && due > 0) return nav(`/wallet?custom=${week.id}`)
-      return nav('/menu/create')
+      if (sel?.mode !== 'custom' || !savedCustom) return nav('/menu/create')
+      if (!booked) return nav(`/wallet?custom=${week.id}`)
+      return due > 0 ? nav(`/wallet?extra=${week.id}`) : nav('/menu/create')
     }
-    if (!covered) return nav(`/wallet?pack=${pack.id}`)
+    if (!booked) return nav(`/wallet?pack=${pack.id}`)
     const p = pack
     const save = async () => {
       setBusy(true)
       try {
         await savePicks(uid!, week.id, 'pack', p.id, p.picks)
-        toast(`${p.name} is your menu for ${formatWeekRange(week.week_start)}`)
+        if (p.price > credit) nav(`/wallet?extra=${week.id}`)
+        else toast(`${p.name} is your menu for ${formatWeekRange(week.week_start)}`)
         q.reload()
       } catch (e) {
         toast(e instanceof Error ? e.message : 'Could not save', 'error')
@@ -100,8 +104,8 @@ export default function MenuView() {
   const action = locked
     ? { label: 'Back to menus', icon: null }
     : pack
-      ? selected ? { label: 'Your menu', icon: <Check className="size-4" /> } : covered ? { label: 'Choose this menu', icon: <Check className="size-4" /> } : { label: 'Book this week', icon: null }
-      : sel?.mode === 'custom' && due > 0 ? { label: `Pay ${formatINR(due)}`, icon: null } : { label: sel?.mode === 'custom' ? 'Edit menu' : 'Build my menu', icon: <Pencil className="size-4" /> }
+      ? selected ? { label: 'Your menu', icon: <Check className="size-4" /> } : booked ? { label: covered ? 'Switch to this menu' : `Switch · pay ${formatINR(due)}`, icon: <Check className="size-4" /> } : { label: 'Book this menu', icon: null }
+      : sel?.mode === 'custom' && savedCustom && !booked ? { label: 'Book this menu', icon: null } : sel?.mode === 'custom' && booked && due > 0 ? { label: `Pay ${formatINR(due)}`, icon: null } : { label: sel?.mode === 'custom' ? 'Edit menu' : 'Build my menu', icon: <Pencil className="size-4" /> }
 
   return (
     <div className="-mx-4 -mt-4 min-h-[calc(100dvh-64px)] bg-[#0f0b0a] pb-32 text-white sm:-mx-6">
@@ -217,10 +221,10 @@ export default function MenuView() {
           <div className="min-w-0">
             <p className="flex items-baseline gap-1">
               <span className="font-display text-[22px] font-bold tabular">{formatINR(due)}</span>
-              <span className="text-xs text-white/50">{due === 0 && price > 0 ? 'included in your plan' : '/ week'}</span>
+              <span className="text-xs text-white/50">{booked ? (due === 0 ? 'included in your booking' : 'extra this week') : '/ week'}</span>
             </p>
             <p className="truncate text-xs text-white/50">
-              {locked ? <span className="inline-flex items-center gap-1"><Lock className="size-3" /> Choices closed for this week</span> : due === 0 && price > 0 ? <span className="inline-flex items-center gap-1 text-leaf">{mealsLabel(meals)} covered</span> : `${mealsLabel(meals)} · 7 days`}
+              {locked ? <span className="inline-flex items-center gap-1"><Lock className="size-3" /> Choices closed for this week</span> : booked && due === 0 ? <span className="inline-flex items-center gap-1 text-[#34c759]">{mealsLabel(meals)} covered</span> : `${mealsLabel(meals)} · 7 days`}
             </p>
           </div>
           <button type="button" onClick={act} disabled={busy || selected} className="bg-brand-grad inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-5 text-[15px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60">

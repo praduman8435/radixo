@@ -4,9 +4,10 @@ import type { Backend, Query } from './types'
 import { createSeed, type DemoDB } from './seed'
 import type { TableName, Tables } from '../types'
 import { OTP_REQUIRED } from '../config'
+import { runLocalRpc } from './localRpc'
 import { cleanPhone, phoneEmail } from '../phone'
 
-const KEY = 'radixo-demo-db-v4' // v3: four meals, priced menus, custom menus
+const KEY = 'radixo-demo-db-v5' // v5: bookings + wallet // v3: four meals, priced menus, custom menus
 const listeners = new Set<(u: { id: string; email: string } | null) => void>()
 
 function load(): DemoDB {
@@ -131,6 +132,13 @@ export function createLocalBackend(): Backend {
       commit()
       emit()
       return { user: { id: u.id, email: u.email }, isNew }
+    },
+
+    async rpc<T>(fn: string, args: Record<string, unknown>) {
+      await tick()
+      const out = runLocalRpc(db(), fn, args)
+      commit()
+      return structuredClone(out) as T
     },
 
     async signOut() {

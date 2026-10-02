@@ -6,7 +6,7 @@ import type { Profile } from './types'
 
 export async function loadOps(opts: { attendanceDays?: number } = {}) {
   const since = addDays(today(), -(opts.attendanceDays ?? 35))
-  const [profiles, subs, payments, pauses, plans, settings, weeks, attendance, selections, feedback, wastage, packs] = await Promise.all([
+  const [profiles, subs, payments, pauses, plans, settings, weeks, attendance, selections, feedback, wastage, packs, wallet_txns] = await Promise.all([
     api.list('profiles', { order: { col: 'full_name' } }),
     api.list('subscriptions'),
     api.list('payments', { order: { col: 'created_at', asc: false } }),
@@ -19,9 +19,11 @@ export async function loadOps(opts: { attendanceDays?: number } = {}) {
     api.list('feedback', { order: { col: 'created_at', asc: false } }),
     api.list('wastage', { order: { col: 'date', asc: false } }),
     api.list('packs'),
+    api.list('wallet_txns', { order: { col: 'created_at', asc: false } }),
   ])
   const byId = new Map(profiles.map((p) => [p.id, p]))
-  return { profiles, byId, subs, payments, pauses, plans, settings, weeks, attendance, selections, feedback, wastage, packs }
+  const walletOf = (uid: string) => wallet_txns.filter((t) => t.user_id === uid).reduce((n, t) => n + t.amount, 0)
+  return { profiles, byId, subs, payments, pauses, plans, settings, weeks, attendance, selections, feedback, wastage, packs, wallet_txns, walletOf }
 }
 
 export type Ops = Awaited<ReturnType<typeof loadOps>>

@@ -7,6 +7,7 @@ import { addDays, formatDate, formatDateTime, mondayOf, today } from '../../lib/
 import { formatINR, mealsLabel, memberState, subLabel, type MemberState } from '../../lib/logic'
 import type { Profile, Role } from '../../lib/types'
 import { Avatar, Badge, Button, Card, EmptyState, ErrorNote, Modal, PageHeader, PageLoader, Segmented, Select } from '../../components/ui'
+import { WalletModal } from './Approvals'
 import { useToast } from '../../components/toast'
 import { useAuth } from '../../lib/auth'
 
@@ -14,11 +15,11 @@ type Filter = 'all' | 'active' | 'ending' | 'pending' | 'inactive' | 'team'
 
 function stateBadge(s: MemberState) {
   switch (s.kind) {
-    case 'active': return s.paused ? <Badge tone="blue">Paused</Badge> : s.daysLeft <= 5 ? <Badge tone="amber">Ends in {s.daysLeft}d</Badge> : <Badge tone="green">Active</Badge>
+    case 'active': return s.paused ? <Badge tone="blue">Away today</Badge> : s.daysLeft <= 5 ? <Badge tone="amber">Ends in {s.daysLeft}d</Badge> : <Badge tone="green">Active</Badge>
     case 'pending': return <Badge tone="amber">Payment pending</Badge>
     case 'upcoming': return <Badge tone="blue">Starts {formatDate(s.sub.start_date)}</Badge>
     case 'expired': return <Badge tone="red">Expired</Badge>
-    default: return <Badge>No plan</Badge>
+    default: return <Badge>No booking</Badge>
   }
 }
 
@@ -58,8 +59,8 @@ export default function Members() {
   const packName = (id: string | null) => ops.packs.find((x) => x.id === id)?.name ?? 'Ready-made'
 
   function exportCsv() {
-    const lines = [['Name', 'Code', 'Phone', 'Email', 'Role', 'Stay', 'Area', 'Status', 'Plan ends']]
-    for (const { p, s: st } of shown) lines.push([p.full_name, p.member_code, p.phone, p.email, p.role, p.stay_type, p.area, st.kind, 'sub' in st ? st.sub.end_date : ''])
+    const lines = [['Name', 'Code', 'Phone', 'Email', 'Role', 'Stay', 'Area', 'Status', 'Booked till', 'Wallet']]
+    for (const { p, s: st } of shown) lines.push([p.full_name, p.member_code, p.phone, p.email, p.role, p.stay_type, p.area, st.kind, 'sub' in st ? st.sub.end_date : '', String(ops.walletOf(p.id))])
     const csv = lines.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -76,7 +77,7 @@ export default function Members() {
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, code, phone, area" aria-label="Search members" className="h-10 w-full rounded-xl border border-line bg-paper pl-9 pr-3 text-sm focus:border-brand focus:outline-none" />
         </div>
         <Segmented size="sm" value={filter} onChange={setFilter} options={[
-          { value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'ending', label: 'Ending soon' }, { value: 'pending', label: 'Pending' }, { value: 'inactive', label: 'No plan' }, { value: 'team', label: 'Team' },
+          { value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'ending', label: 'Ending soon' }, { value: 'pending', label: 'Pending' }, { value: 'inactive', label: 'No booking' }, { value: 'team', label: 'Team' },
         ]} />
       </div>
 
@@ -89,7 +90,7 @@ export default function Members() {
                 <th className="px-4 py-3 font-semibold">Phone</th>
                 <th className="px-4 py-3 font-semibold">Stay</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Plan ends</th>
+                <th className="px-4 py-3 font-semibold">Booked till</th>
                 <th className="px-4 py-3 font-semibold">This week</th>
                 <th className="px-4 py-3 font-semibold">Next week</th>
               </tr>
@@ -129,6 +130,7 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
   const { profile: me } = useAuth()
   const [role, setRole] = useState<Role>(profile.role)
   const [saving, setSaving] = useState(false)
+  const [walletOpen, setWalletOpen] = useState(false)
   const st = memberState(profile.id, ops.subs, ops.payments, ops.pauses)
   const subs = ops.subs.filter((s) => s.user_id === profile.id).sort((a, b) => (a.start_date < b.start_date ? 1 : -1))
   const pays = ops.payments.filter((p) => p.user_id === profile.id)
@@ -167,13 +169,13 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
 
         <div className="grid grid-cols-3 gap-3 text-center">
           <div className="rounded-xl bg-sand p-3"><p className="font-display text-2xl font-bold">{att.length}</p><p className="text-xs text-muted">meals, last 14 days</p></div>
-          <div className="rounded-xl bg-sand p-3"><p className="font-display text-2xl font-bold">{subs.length}</p><p className="text-xs text-muted">plans bought</p></div>
-          <div className="rounded-xl bg-sand p-3"><p className="font-display text-2xl font-bold">{formatINR(pays.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0))}</p><p className="text-xs text-muted">paid in total</p></div>
+          <button type="button" onClick={() => setWalletOpen(true)} className="rounded-xl bg-sand p-3 hover:bg-line/60"><p className="font-display text-2xl font-bold">{formatINR(ops.walletOf(profile.id))}</p><p className="text-xs text-muted">wallet · add money</p></button>
+          <div className="rounded-xl bg-sand p-3"><p className="font-display text-2xl font-bold">{formatINR(pays.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount + p.wallet_used, 0))}</p><p className="text-xs text-muted">paid in total</p></div>
         </div>
 
         <div>
-          <h3 className="mb-2 text-sm font-semibold">Plans</h3>
-          {subs.length === 0 ? <p className="text-sm text-muted">No plans yet.</p> : (
+          <h3 className="mb-2 text-sm font-semibold">Bookings</h3>
+          {subs.length === 0 ? <p className="text-sm text-muted">No bookings yet.</p> : (
             <ul className="divide-y divide-line rounded-xl border border-line">
               {subs.map((s) => <li key={s.id} className="flex justify-between gap-3 px-3 py-2 text-sm"><span>{subLabel(s, ops.plans, ops.packs)} <span className="text-xs text-muted">· {mealsLabel(s.meals)}</span></span><span className="text-muted tabular">{formatDate(s.start_date)} – {formatDate(s.end_date)}</span></li>)}
             </ul>
@@ -183,10 +185,22 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
           <h3 className="mb-2 text-sm font-semibold">Payments</h3>
           {pays.length === 0 ? <p className="text-sm text-muted">No payments yet.</p> : (
             <ul className="divide-y divide-line rounded-xl border border-line">
-              {pays.map((p) => <li key={p.id} className="flex justify-between gap-3 px-3 py-2 text-sm"><span>{formatDateTime(p.created_at)} · {p.method === 'cash' ? 'Cash' : `UTR ${p.utr}`}</span><span className="tabular">{formatINR(p.amount)} <Badge tone={p.status === 'approved' ? 'green' : p.status === 'pending' ? 'amber' : 'red'} className="capitalize">{p.status}</Badge></span></li>)}
+              {pays.map((p) => <li key={p.id} className="flex justify-between gap-3 px-3 py-2 text-sm"><span>{formatDateTime(p.created_at)} · {p.method === 'wallet' ? 'Wallet' : p.method === 'cash' ? 'Cash' : `UTR ${p.utr}`}{p.wallet_used > 0 && p.method !== 'wallet' ? ` + ${formatINR(p.wallet_used)} wallet` : ''}</span><span className="tabular">{formatINR(p.amount + p.wallet_used)} <Badge tone={p.status === 'approved' ? 'green' : p.status === 'pending' ? 'amber' : 'red'} className="capitalize">{p.status}</Badge></span></li>)}
             </ul>
           )}
         </div>
+
+        {(() => {
+          const txns = ops.wallet_txns.filter((x) => x.user_id === profile.id)
+          return txns.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Wallet</h3>
+              <ul className="divide-y divide-line rounded-xl border border-line">
+                {txns.slice(0, 8).map((x) => <li key={x.id} className="flex justify-between gap-3 px-3 py-2 text-sm"><span>{formatDateTime(x.created_at)} · {x.note}</span><span className={x.amount >= 0 ? 'font-semibold text-leaf tabular' : 'tabular'}>{x.amount >= 0 ? '+' : '−'}{formatINR(Math.abs(x.amount))}</span></li>)}
+              </ul>
+            </div>
+          )
+        })()}
 
         {me?.id !== profile.id && (
           <div className="flex flex-wrap items-end gap-3 rounded-xl border border-line p-3">
@@ -201,6 +215,7 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
           </div>
         )}
       </div>
+      {walletOpen && <WalletModal open onClose={() => setWalletOpen(false)} ops={ops} userId={profile.id} onDone={() => { setWalletOpen(false); onChanged() }} />}
     </Modal>
   )
 }

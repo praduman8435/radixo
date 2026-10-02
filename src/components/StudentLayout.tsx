@@ -11,7 +11,7 @@ const NAV = [
   { to: '/', label: 'Home', end: true },
   { to: '/menu', label: 'Menus', end: true },
   { to: '/menu/create', label: 'Build your own', end: false },
-  { to: '/wallet', label: 'Plans', end: false },
+  { to: '/wallet', label: 'Wallet', end: false },
 ]
 
 /** Page titles for inner pages; `back` adds a close button on phones. Immersive pages hide the footer. */
@@ -57,7 +57,6 @@ export function StudentLayout() {
     return () => { document.body.style.overflow = prev }
   }, [drawer])
 
-  // Over the dark home hero the header is see-through; everywhere else (and once scrolled) it's solid white.
   const dark = true // header is dark on every page, like the home page
   const navCls = ({ isActive }: { isActive: boolean }) =>
     cx('rounded-full px-4 py-2 text-[15px] font-semibold transition-colors', dark ? (isActive ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white') : isActive ? 'bg-brand-50 text-brand' : 'text-ink/70 hover:text-ink')
@@ -74,7 +73,7 @@ export function StudentLayout() {
   )
 
   return (
-    <div className="min-h-dvh overflow-x-clip bg-white">
+    <div className="min-h-dvh overflow-x-clip bg-[#0f0b0a] text-white">
       <header className={cx('no-print sticky top-0 z-40 transition-[background,box-shadow] duration-300', cx('border-b border-white/[0.06] bg-[#120d0c]', scrolled && 'shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]'))}>
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:h-[72px] sm:px-6">
           {meta.back && (
@@ -131,7 +130,7 @@ export function StudentLayout() {
                 { to: '/', label: 'Home', icon: Home, end: true },
                 { to: '/menu', label: 'This week’s menus', icon: BookOpen, end: true },
                 { to: '/menu/create', label: 'Build your own', icon: Plus, end: false },
-                { to: '/wallet', label: 'Plans & pricing', icon: Wallet, end: false },
+                { to: '/wallet', label: 'Wallet & bookings', icon: Wallet, end: false },
                 ...(user ? [{ to: '/profile', label: 'My QR pass', icon: QrCode, end: false }, { to: '/feedback', label: 'Rate a meal', icon: Star, end: false }] : []),
               ].map(({ to, label, icon: Icon, end }) => (
                 <NavLink key={to} to={to} end={end} className={({ isActive }) => cx('flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-colors', isActive ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/[0.05] hover:text-white')}>

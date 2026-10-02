@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { Check, X, Banknote, Inbox } from 'lucide-react'
+import { Check, X, Inbox, WalletCards } from 'lucide-react'
 import { useAsync } from '../../lib/useAsync'
 import { loadOps, students } from '../../lib/admin'
-import { approvePause, approvePayment, recordCashPayment, rejectPause, rejectPayment } from '../../lib/data'
-import { formatDate, formatDateTime } from '../../lib/dates'
-import { formatINR, nextSubscriptionDates, pauseDays, paymentLabel, weekBookingDates } from '../../lib/logic'
-import type { Payment, Pause } from '../../lib/types'
+import { addWalletMoney, approvePayment, rejectPayment } from '../../lib/data'
+import { formatDate, formatDateTime, today } from '../../lib/dates'
+import { formatINR, pauseDays, paymentLabel } from '../../lib/logic'
+import type { Payment } from '../../lib/types'
 import { Avatar, Badge, Button, Card, EmptyState, ErrorNote, Input, Modal, PageHeader, PageLoader, Segmented, Select } from '../../components/ui'
 import { useToast } from '../../components/toast'
 
-type Tab = 'payments' | 'pauses'
+type Tab = 'payments' | 'skips'
 type Filter = 'pending' | 'done'
 
 export default function Approvals() {
@@ -21,18 +21,18 @@ export default function Approvals() {
   const [busy, setBusy] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<Payment | null>(null)
   const [note, setNote] = useState('')
-  const [cashOpen, setCashOpen] = useState(false)
+  const [walletOpen, setWalletOpen] = useState(false)
   const q = useAsync(() => loadOps(), [])
 
   if (q.loading && !q.data) return <PageLoader />
   if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
   const ops = q.data!
-  const plan = (id: string) => ops.plans.find((p) => p.id === id)
   const name = (id: string) => ops.byId.get(id)?.full_name ?? 'Member'
   const code = (id: string) => ops.byId.get(id)?.member_code ?? ''
 
   const payments = ops.payments.filter((p) => (filter === 'pending' ? p.status === 'pending' : p.status !== 'pending'))
-  const pauses = ops.pauses.filter((p) => (filter === 'pending' ? p.status === 'requested' : p.status !== 'requested'))
+  const waiting = ops.payments.filter((p) => p.status === 'pending').length
+  const skips = ops.pauses.filter((p) => p.status === 'approved' && (filter === 'pending' ? p.end_date >= today() : p.end_date < today()))
 
   async function run(id: string, fn: () => Promise<unknown>, msg: string) {
     setBusy(id)
@@ -52,18 +52,18 @@ export default function Approvals() {
       <PageHeader
         title="Approvals"
         subtitle="Match each UTR against your bank or UPI app before approving."
-        actions={<Button variant="secondary" onClick={() => setCashOpen(true)}><Banknote className="size-4" /> Record cash payment</Button>}
+        actions={<Button variant="secondary" onClick={() => setWalletOpen(true)}><WalletCards className="size-4" /> Add to wallet</Button>}
       />
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <Segmented
           value={tab}
           onChange={(v) => setParams({ tab: v })}
           options={[
-            { value: 'payments', label: `Payments${ops.payments.some((p) => p.status === 'pending') ? ` (${ops.payments.filter((p) => p.status === 'pending').length})` : ''}` },
-            { value: 'pauses', label: `Pauses${ops.pauses.some((p) => p.status === 'requested') ? ` (${ops.pauses.filter((p) => p.status === 'requested').length})` : ''}` },
+            { value: 'payments', label: `Payments${waiting ? ` (${waiting})` : ''}` },
+            { value: 'skips', label: 'Not coming' },
           ]}
         />
-        <Segmented size="sm" value={filter} onChange={setFilter} options={[{ value: 'pending', label: 'Waiting' }, { value: 'done', label: 'History' }]} />
+        <Segmented size="sm" value={filter} onChange={setFilter} options={[{ value: 'pending', label: tab === 'payments' ? 'Waiting' : 'Upcoming' }, { value: 'done', label: tab === 'payments' ? 'History' : 'Past' }]} />
       </div>
 
       {tab === 'payments' ? (
@@ -72,9 +72,8 @@ export default function Approvals() {
         ) : (
           <ul className="space-y-3">
             {payments.map((p) => {
-              const pl = p.plan_id ? plan(p.plan_id) : undefined
-              const wk = p.week_id ? ops.weeks.find((w) => w.id === p.week_id) : undefined
-              const dates = pl ? nextSubscriptionDates(ops.subs, p.user_id, pl) : wk ? weekBookingDates(wk) : null
+              const d = p.details
+              const isExtra = d?.kind === 'extra'
               return (
                 <li key={p.id}>
                   <Card className="flex flex-wrap items-center gap-4 p-4">
@@ -82,18 +81,23 @@ export default function Approvals() {
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold">{name(p.user_id)} <span className="font-mono text-sm text-muted">{code(p.user_id)}</span></p>
                       <p className="text-sm text-muted">{paymentLabel(p, ops.plans, ops.packs)} · {formatDateTime(p.created_at)}</p>
-                      <p className="mt-1 text-sm">{p.method === 'cash' ? 'Cash' : <>UTR <span className="font-mono font-semibold">{p.utr}</span></>}</p>
-                      {p.status === 'pending' && dates && <p className="mt-1 text-xs text-muted">If approved: {formatDate(dates.start_date)} – {formatDate(dates.end_date)}</p>}
+                      <p className="mt-1 text-sm">
+                        {p.method === 'wallet' ? 'Paid from wallet' : p.method === 'cash' ? 'Cash' : <>UTR <span className="font-mono font-semibold">{p.utr}</span></>}
+                        {p.wallet_used > 0 && p.method !== 'wallet' && <span className="text-muted"> · {formatINR(p.wallet_used)} from wallet</span>}
+                      </p>
+                      {p.status === 'pending' && d?.start_date && d.end_date && !isExtra && <p className="mt-1 text-xs text-muted">If approved: runs {formatDate(d.start_date)} – {formatDate(d.end_date)}{d.discount_pct ? ` · ${d.discount_pct}% off` : ''}</p>}
+                      {p.status === 'pending' && isExtra && <p className="mt-1 text-xs text-muted">Extra for a costlier menu in a week they already booked</p>}
+                      {p.status === 'rejected' && p.wallet_used > 0 && <p className="mt-1 text-xs text-muted">{formatINR(p.wallet_used)} went back to their wallet</p>}
                       {p.admin_note && p.status !== 'pending' && <p className="mt-1 text-xs text-muted">Note: {p.admin_note}</p>}
                     </div>
                     <div className="text-right">
                       <p className="font-display text-2xl font-bold tabular">{formatINR(p.amount)}</p>
-                      {p.status !== 'pending' && <Badge tone={p.status === 'approved' ? 'green' : 'red'} className="capitalize">{p.status}</Badge>}
+                      {p.status === 'pending' ? <p className="text-xs text-muted">to check in UPI</p> : <Badge tone={p.status === 'approved' ? 'green' : 'red'} className="capitalize">{p.status}</Badge>}
                     </div>
                     {p.status === 'pending' && (
                       <div className="flex w-full gap-2 sm:w-auto">
                         <Button variant="danger" className="flex-1 sm:flex-none" onClick={() => { setRejecting(p); setNote('') }} disabled={busy === p.id}><X className="size-4" /> Reject</Button>
-                        <Button variant="success" className="flex-1 sm:flex-none" loading={busy === p.id} onClick={() => run(p.id, () => approvePayment(p), `${name(p.user_id)}'s ${pl ? 'plan' : 'menu'} is active`)}><Check className="size-4" /> Approve</Button>
+                        <Button variant="success" className="flex-1 sm:flex-none" loading={busy === p.id} onClick={() => run(p.id, () => approvePayment(p), isExtra ? 'Approved' : `${name(p.user_id)}'s booking is confirmed`)}><Check className="size-4" /> Approve</Button>
                       </div>
                     )}
                   </Card>
@@ -102,27 +106,23 @@ export default function Approvals() {
             })}
           </ul>
         )
-      ) : pauses.length === 0 ? (
-        <Card><EmptyState icon={<Inbox className="size-6" />} title={filter === 'pending' ? 'No pause requests' : 'No history yet'} /></Card>
+      ) : skips.length === 0 ? (
+        <Card><EmptyState icon={<Inbox className="size-6" />} title={filter === 'pending' ? 'Nobody is away' : 'Nothing yet'}>Students mark these themselves at least {ops.settings.skip_notice_hours} hours ahead. The value goes to their wallet.</EmptyState></Card>
       ) : (
         <ul className="space-y-3">
-          {pauses.map((p: Pause) => (
+          {skips.map((p) => (
             <li key={p.id}>
               <Card className="flex flex-wrap items-center gap-4 p-4">
                 <Avatar name={name(p.user_id)} className="size-11" />
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold">{name(p.user_id)} <span className="font-mono text-sm text-muted">{code(p.user_id)}</span></p>
-                  <p className="text-sm">{formatDate(p.start_date, { weekday: true })} – {formatDate(p.end_date, { weekday: true })} · <span className="font-semibold">{pauseDays(p)} days</span></p>
+                  <p className="text-sm">{formatDate(p.start_date, { weekday: true })}{p.end_date > p.start_date ? ` – ${formatDate(p.end_date, { weekday: true })}` : ''} · <span className="font-semibold">{pauseDays(p)} day{pauseDays(p) === 1 ? '' : 's'}</span></p>
                   <p className="text-sm text-muted">{p.reason || 'No reason given'}</p>
                 </div>
-                {p.status === 'requested' ? (
-                  <div className="flex w-full gap-2 sm:w-auto">
-                    <Button variant="danger" className="flex-1 sm:flex-none" disabled={busy === p.id} onClick={() => run(p.id, () => rejectPause(p), 'Pause rejected')}><X className="size-4" /> Reject</Button>
-                    <Button variant="success" className="flex-1 sm:flex-none" loading={busy === p.id} onClick={() => run(p.id, () => approvePause(p), `Approved; plan extended by ${pauseDays(p)} days`)}><Check className="size-4" /> Approve</Button>
-                  </div>
-                ) : (
-                  <Badge tone={p.status === 'approved' ? 'green' : 'red'} className="capitalize">{p.status}</Badge>
-                )}
+                <div className="text-right">
+                  <p className="font-display text-xl font-bold tabular">{formatINR(p.credit)}</p>
+                  <p className="text-xs text-muted">to wallet</p>
+                </div>
               </Card>
             </li>
           ))}
@@ -138,30 +138,33 @@ export default function Approvals() {
           <Button variant="danger" loading={busy === rejecting?.id} onClick={() => rejecting && run(rejecting.id, () => rejectPayment(rejecting, note || 'Payment not found'), 'Payment rejected').then(() => setRejecting(null))}>Reject</Button>
         </>}
       >
-        <p className="mb-3 text-sm text-muted">The student sees this note in their payment history.</p>
+        <p className="mb-3 text-sm text-muted">The student sees this note in their payment history.{rejecting && rejecting.wallet_used > 0 ? ` The ${formatINR(rejecting.wallet_used)} they used from their wallet goes back.` : ''}</p>
         <Input label="Reason" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. UTR not found in our account" />
       </Modal>
 
-      <CashModal open={cashOpen} onClose={() => setCashOpen(false)} ops={ops} onDone={() => { setCashOpen(false); q.reload() }} />
+      <WalletModal open={walletOpen} onClose={() => setWalletOpen(false)} ops={ops} onDone={() => { setWalletOpen(false); q.reload() }} />
     </div>
   )
 }
 
-function CashModal({ open, onClose, ops, onDone }: { open: boolean; onClose: () => void; ops: Awaited<ReturnType<typeof loadOps>>; onDone: () => void }) {
+/** Cash at the counter, a refund or a correction: the money goes into the student's wallet and pays for their next booking. */
+export function WalletModal({ open, onClose, ops, onDone, userId: fixedUser }: { open: boolean; onClose: () => void; ops: Awaited<ReturnType<typeof loadOps>>; onDone: () => void; userId?: string }) {
   const toast = useToast()
   const members = students(ops.profiles)
-  const active = ops.plans.filter((p) => p.is_active)
-  const [userId, setUserId] = useState('')
-  const [planId, setPlanId] = useState(active[0]?.id ?? '')
+  const [userId, setUserId] = useState(fixedUser ?? '')
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('Cash at the counter')
   const [busy, setBusy] = useState(false)
-  const plan = active.find((p) => p.id === planId)
+  const uid = fixedUser ?? userId
+  const n = Math.round(Number(amount))
 
   async function save() {
-    if (!userId || !plan) return
+    if (!uid || !n) return
     setBusy(true)
     try {
-      await recordCashPayment(userId, plan)
-      toast('Cash payment recorded and plan activated')
+      await addWalletMoney(uid, n, note)
+      toast(`${n > 0 ? 'Added' : 'Removed'} ${formatINR(Math.abs(n))}`)
+      setAmount('')
       onDone()
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not save', 'error')
@@ -171,16 +174,17 @@ function CashModal({ open, onClose, ops, onDone }: { open: boolean; onClose: () 
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Record cash payment" footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button loading={busy} disabled={!userId || !plan} onClick={save}>Save & activate</Button></>}>
+    <Modal open={open} onClose={onClose} title="Add to wallet" footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button loading={busy} disabled={!uid || !n} onClick={save}>Save</Button></>}>
       <div className="space-y-4">
-        <Select label="Member" value={userId} onChange={(e) => setUserId(e.target.value)}>
-          <option value="">Choose a member…</option>
-          {members.map((m) => <option key={m.id} value={m.id}>{m.full_name} · {m.member_code}</option>)}
-        </Select>
-        <Select label="Plan" value={planId} onChange={(e) => setPlanId(e.target.value)}>
-          {active.map((p) => <option key={p.id} value={p.id}>{p.name} · {formatINR(p.price)}</option>)}
-        </Select>
-        {userId && plan && (() => { const d = nextSubscriptionDates(ops.subs, userId, plan); return <p className="text-sm text-muted">Plan runs {formatDate(d.start_date)} – {formatDate(d.end_date)}.</p> })()}
+        {!fixedUser && (
+          <Select label="Member" value={userId} onChange={(e) => setUserId(e.target.value)}>
+            <option value="">Choose a member…</option>
+            {members.map((m) => <option key={m.id} value={m.id}>{m.full_name} · {m.member_code}</option>)}
+          </Select>
+        )}
+        <Input label="Amount (₹)" type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 3400" hint="Use a minus sign to take money out." />
+        <Input label="Note" value={note} onChange={(e) => setNote(e.target.value)} />
+        {uid && <p className="text-sm text-muted">Balance now {formatINR(ops.walletOf(uid))}{n ? ` → ${formatINR(ops.walletOf(uid) + n)}` : ''}. It pays for their next booking automatically.</p>}
       </div>
     </Modal>
   )

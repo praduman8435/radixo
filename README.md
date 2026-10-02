@@ -1,19 +1,21 @@
 # Radixo — student mess app
 
-A web app for running Radixo, the student mess near KIET, Muradnagar. Students join, pay by UPI, pick a ready-made weekly menu or build their own, and show a QR pass at the counter. The admin side runs the mess day to day.
+A web app for running Radixo student mess outlets. Students pick a ready-made weekly menu or build their own, book it for 1 week to 6 months, pay by UPI, and show a QR pass at the counter. The admin side runs the mess day to day.
 
 ## What's in it
 
 **Students** (phone-first, no login needed to browse)
-- **Home:** live "serving now" status, today's meals, ready-made weeks, the "build your own" showcase, offers, the chef story, hygiene promise, timings with directions, FAQ
-- **Menu:** "Create/Choose a menu". Ready-made weekly menus with their own price ("see the menu", "Book Now"), or **build your own**: day by day, Add dishes for breakfast, lunch, snacks and dinner from the kitchen's options, with a live Total Budget
+- **Home:** live "serving now" status, today's meals, ready-made weeks, the "build your own" story, booking lengths with their discounts, the chef story, timings with directions, FAQ
+- **Menus:** a swipe deck of ready-made weekly menus (each with its own price), or **build your own**: day by day, add dishes for breakfast, lunch, snacks and dinner from the kitchen's options, with a live total. Eat 4 days a week or 7, at any budget
 - **Login only when needed** (saving or booking a menu, paying, profile): mobile number → OTP → name. With `VITE_OTP_REQUIRED=false` (the default) the code isn't checked and can be skipped
-- **Wallet:** plans and UPI checkout (QR, UPI app link, 12-digit UTR) for a plan, a ready-made week, or a custom menu. Plan holders pay only for meals their plan doesn't cover
-- **Profile:** "QR code & your plan": meal pass, today's plate, this week's menu, pause requests, payments, profile details
+- **Booking:** any menu for 1 week, 1 month, 3 months or 6 months (default 0 / 5 / 8 / 12% off, set in Settings). The price is locked for the whole booking and the menu carries over each week (a ready-made menu by name; a custom menu keeps its dishes where still served, else the kitchen's default). Students can change the menu any week before the deadline; a costlier week is paid as an "extra", a cheaper one isn't refunded
+- **Not coming:** mark a date range at least 24 hours before (counted to midnight India time). The full value of those booked meals goes to the **wallet** and is used automatically on the next booking. Undo is allowed under the same notice
+- **Wallet:** balance, bookings, payments being checked, wallet history, and UPI checkout (QR, UPI app link, 12-digit UTR). If the wallet covers the whole booking it's confirmed at once
+- **Profile:** meal pass QR, today's plate, the week's menu, "not coming", payments, profile details
 
-**Admin and staff** (`/admin`, password login via "Owner & staff login" in the footer → `/welcome`)
+**Admin and staff** (`/admin`, password login via "Team login" in the footer → `/welcome`)
 - Overview with all four meals, check-in (code, phone, name or QR scan), kitchen prep from everyone's picks
-- Weekly menu editor (breakfast, lunch, snacks, dinner; 1–4 options per line; priced ready-made menus with their meals), dishes with price and photo, members, approvals (plans and menu bookings), feedback, wastage, settings (timings for each meal, plans with their meals)
+- Weekly menu editor (breakfast, lunch, snacks, dinner; 1–4 options per line; priced ready-made menus with their meals), dishes with price and photo, members, approvals (UPI payments; "not coming" list), add money to a wallet (cash at the counter, refunds), feedback, wastage, settings (meal timings, booking discounts, notice hours)
 
 Roles: **student**, **staff** (check-in, prep, wastage), **admin** (everything).
 
@@ -30,18 +32,18 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. With no Supabase keys the app runs in **demo mode**: data lives in your browser, seeded with a realistic week. Demo logins: student `98110 00001` (any OTP), owner `98000 00000`, counter staff `98000 00001` (password `demo1234`, via "Owner & staff login" in the footer). "Reset demo" in the footer restores the demo data.
+Open http://localhost:5173. With no Supabase keys the app runs in **demo mode**: data lives in your browser, seeded with a realistic week. Demo logins: student `98110 00001` (any OTP), owner `98000 00000`, counter staff `98000 00001` (password `demo1234`, via "Team login" in the footer). To start the demo over, clear the site's local storage.
 
 ## Go live with Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor**, paste `supabase/schema.sql`, and run it. This creates the tables, row-level security, and starter plans and dishes.
+2. Open **SQL Editor**, paste `supabase/schema.sql`, and run it. Then run `supabase/migrations/002_bookings_wallet.sql` the same way. Together they create the tables, row-level security, the booking and wallet functions, and starter dishes. Both are safe to run again.
 3. Copy `.env.example` to `.env.local` and fill in **Project Settings → API**: the project URL and the `anon` public key.
 4. Turn off "Confirm email" (Authentication → Providers → Email). Open the app, log in once as a student with your number, then in the SQL editor make that account the owner and give it a password:
    ```sql
    update profiles set role = 'admin' where phone = '98xxxxxxxx';
    ```
-   Then set its password in Authentication → Users, and log in through "Owner & staff login".
+   Then set its password in Authentication → Users, and log in through "Team login".
 5. Log in again. In **Settings**, set the real UPI ID, WhatsApp number and address. In **Weekly menu**, create the first week and publish it.
 
 
@@ -54,16 +56,17 @@ Import the repo in Vercel, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`,
 | Path | What |
 | --- | --- |
 | `src/lib/types.ts` | Data model (matches `supabase/schema.sql`) |
-| `src/lib/logic.ts` | Business rules: plan status, pauses, picks, prep-sheet maths |
+| `src/lib/logic.ts` | Business rules: member status, picks, prep-sheet maths |
+| `src/lib/booking.ts` | Booking rules: durations and discounts, weekly carry-over, "not coming" credit (mirrors the SQL functions) |
 | `src/lib/data.ts`, `src/lib/admin.ts` | Loaders and actions (approve payment, check in, copy week…) |
-| `src/lib/backend/` | One interface, two stores: `supabase.ts` and the in-browser `local.ts` demo (`seed.ts`) |
+| `src/lib/backend/` | One interface, two stores: `supabase.ts` and the in-browser `local.ts` demo (`seed.ts`, `localRpc.ts` for the booking functions) |
 | `src/pages/app/` | Student screens |
 | `src/pages/admin/` | Admin and staff screens |
 
-Security lives in the database: row-level security in `schema.sql` decides who can read and write what. For example, students can only submit *pending* payments, can't change their own role, and can't change picks after the deadline. Each UPI reference can be used once.
+Security lives in the database. Row-level security decides who can read and write what: students can't change their own role or change picks after the deadline, and each UPI reference can be used once. Money is never trusted from the browser: students book, pay from the wallet and mark "not coming" only through Postgres functions (`book`, `mark_skip`, `cancel_skip`) that compute prices and credits themselves. Only the owner can approve or reject payments (`approve_payment`, `reject_payment`) or add wallet money.
 
 ## Known limits
 
-- Approving a payment and creating the plan are two separate writes from the admin's browser. If the connection drops between them, the payment shows approved without a plan. Move this into a Postgres function if it becomes a problem.
+- Pending payments are priced when submitted. If the owner approves one much later, the booking still starts on the date quoted then.
 - Payments are checked by hand against your UPI app. There's no gateway integration yet.
 - QR scanning uses the browser's built-in `BarcodeDetector`. Where it isn't available (iPhone Safari, Firefox), staff type the code instead.

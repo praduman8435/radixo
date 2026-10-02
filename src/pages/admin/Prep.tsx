@@ -23,7 +23,7 @@ export default function Prep() {
   if (q.loading && !q.data) return <PageLoader />
   if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
   const { ops, dishes, week, items } = q.data!
-  const sheet = prepSheet({ date, meal, week, items, selections: ops.selections, subs: ops.subs, pauses: ops.pauses, attendance: ops.attendance, settings: ops.settings })
+  const sheet = prepSheet({ date, meal, week, items, selections: ops.selections, subs: ops.subs, pauses: ops.pauses, attendance: ops.attendance, settings: ops.settings, packs: ops.packs })
   const chose = week ? new Set(ops.selections.filter((s) => s.week_id === week.id).map((s) => s.user_id)) : new Set<string>()
 
   return (

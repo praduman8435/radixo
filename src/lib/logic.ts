@@ -1,5 +1,6 @@
 // Business rules, kept free of UI and storage so both backends and every screen agree.
 import { addDays, diffDays, today, weekdayIndex } from './dates'
+import { effectiveSelection } from './booking'
 import {
   MEALS, slotKey,
   type Attendance, type CustomMenu, type Dish, type Meal, type MenuItem, type Pack, type Pause, type Payment, type Picks, type Plan,
@@ -39,13 +40,19 @@ export function isEligible(userId: string, date: string, meal: Meal, subs: Subsc
 }
 
 /** What a subscription is called on screen: its plan, its ready-made menu, or a custom menu. */
-export function subLabel(s: Pick<Subscription, 'plan_id' | 'pack_id'>, plans: Plan[], packs: Pack[] = []) {
+export const durationLabel = (weeks: number) => ({ 1: '1 week', 4: '1 month', 13: '3 months', 26: '6 months' } as Record<number, string>)[weeks] ?? `${weeks} weeks`
+
+export function subLabel(s: Partial<Pick<Subscription, 'plan_id' | 'pack_id' | 'source' | 'pack_name' | 'weeks'>>, plans: Plan[] = [], packs: Pack[] = []) {
+  if (s.source === 'pack' || s.source === 'custom') return `${s.pack_name || (s.source === 'custom' ? 'My Menu' : 'Menu')} · ${durationLabel(s.weeks ?? 1)}`
   if (s.plan_id) return plans.find((p) => p.id === s.plan_id)?.name ?? 'Plan'
-  if (s.pack_id) return `${packs.find((p) => p.id === s.pack_id)?.name ?? 'Ready-made'} menu · 1 week`
-  return 'Custom menu · 1 week'
+  if (s.pack_id) return `${packs.find((p) => p.id === s.pack_id)?.name ?? 'Ready-made'} menu`
+  return 'Menu booking'
 }
 
-export const paymentLabel = (p: Pick<Payment, 'plan_id' | 'pack_id'>, plans: Plan[], packs: Pack[] = []) => subLabel(p, plans, packs)
+export function paymentLabel(p: Pick<Payment, 'plan_id' | 'pack_id' | 'details'>, plans: Plan[] = [], packs: Pack[] = []) {
+  if (p.details?.label) return p.details.label
+  return subLabel(p, plans, packs)
+}
 
 export type MemberState =
   | { kind: 'none' }
@@ -229,8 +236,9 @@ export function prepSheet(args: {
   pauses: Pause[]
   attendance: Attendance[]
   settings: Settings
+  packs?: Pack[]
 }): PrepSheet {
-  const { date, meal, week, items, selections, subs, pauses, attendance, settings } = args
+  const { date, meal, week, items, selections, subs, pauses, attendance, settings, packs = [] } = args
   const members = [...new Set(subs.map((s) => s.user_id))].filter((u) => isEligible(u, date, meal, subs, pauses))
   const { rate, source } = attendanceRate(date, meal, subs, pauses, attendance, settings.attendance_factor)
   const factor = rate * (1 + settings.buffer_pct / 100)
@@ -239,7 +247,11 @@ export function prepSheet(args: {
   const lines = mealLines(weekItems, day, meal)
   const selByUser = new Map(selections.filter((s) => week && s.week_id === week.id).map((s) => [s.user_id, s]))
   const counts = new Map<string, number>()
-  for (const u of members) for (const d of new Set(dishesFor(weekItems, day, meal, selByUser.get(u)))) counts.set(d, (counts.get(d) ?? 0) + 1)
+  for (const u of members) {
+    // Bookings carry the menu into weeks the student hasn't edited.
+    const sel = week ? effectiveSelection({ userId: u, week, items: weekItems, packs, selection: selByUser.get(u), subs }) : null
+    for (const d of new Set(dishesFor(weekItems, day, meal, sel))) counts.set(d, (counts.get(d) ?? 0) + 1)
+  }
   // Each dish is listed once, under the first line that offers it.
   const seen = new Set<string>()
   return {

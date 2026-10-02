@@ -16,7 +16,7 @@ export default function Overview() {
     const t = today()
     const week = ops.weeks.find((w) => w.week_start === mondayOf(t))
     const items = week ? await api.list('menu_items', { eq: { week_id: week.id } }) : []
-    const prep = MEALS.map((meal) => prepSheet({ date: t, meal, week, items, selections: ops.selections, subs: ops.subs, pauses: ops.pauses, attendance: ops.attendance, settings: ops.settings }))
+    const prep = MEALS.map((meal) => prepSheet({ date: t, meal, week, items, selections: ops.selections, subs: ops.subs, pauses: ops.pauses, attendance: ops.attendance, settings: ops.settings, packs: ops.packs }))
     return { ops, prep }
   }, [])
 
@@ -28,7 +28,7 @@ export default function Overview() {
   const activeToday = members.filter((m) => MEALS.some((ml) => isEligible(m.id, t, ml, ops.subs, ops.pauses)))
   const checked = (meal: Meal) => ops.attendance.filter((a) => a.date === t && a.meal === meal).length
   const pendingPay = ops.payments.filter((p) => p.status === 'pending')
-  const pendingPause = ops.pauses.filter((p) => p.status === 'requested')
+  const awaySoon = ops.pauses.filter((p) => p.status === 'approved' && p.end_date >= t && p.start_date <= addDays(t, 3))
   const openComplaints = ops.feedback.filter((f) => f.kind !== 'rating' && f.status === 'open')
   const week7 = addDays(t, -7)
   const ratings = ops.feedback.filter((f) => f.rating && f.date >= week7)
@@ -38,7 +38,7 @@ export default function Overview() {
   const wastePct = cooked ? (w7.reduce((s, w) => s + w.wasted_kg, 0) / cooked) * 100 : 0
   const name = (id: string) => ops.byId.get(id)?.full_name ?? 'Member'
 
-  // Renewals: plans ending in the next 5 days, or ended in the last 10 days, with nothing booked after.
+  // Renewals: bookings ending in the next 5 days, or ended in the last 10 days, with nothing booked after.
   const renewals = members
     .map((m) => ({ m, s: memberState(m.id, ops.subs, ops.payments, ops.pauses, t) }))
     .filter(({ s }) => (s.kind === 'active' && s.daysLeft <= 5) || (s.kind === 'expired' && diffDays(s.sub.end_date, t) <= 10))
@@ -64,12 +64,12 @@ export default function Overview() {
               <div key={meal} className={cx('rounded-xl p-2.5', meal === currentMeal() ? 'bg-brand-50' : 'bg-sand/60')}>
                 <p className={cx('text-xs font-semibold', meal === currentMeal() ? 'text-brand' : 'text-muted')}>{MEAL_NAME[meal]}</p>
                 <p className="mt-0.5 font-display text-2xl font-bold tabular leading-none">{checked(meal)}<span className="text-base text-muted"> / {prep[i].expected}</span></p>
-                <p className="mt-1 text-[11px] text-muted">{prep[i].members} on plan</p>
+                <p className="mt-1 text-[11px] text-muted">{prep[i].members} booked</p>
               </div>
             ))}
           </div>
         </Card>
-        <Stat label="Waiting for you" value={pendingPay.length + pendingPause.length + openComplaints.length} hint={[plural(pendingPay.length, 'payment'), plural(pendingPause.length, 'pause'), plural(openComplaints.length, 'issue')].join(' · ')} icon={<BadgeCheck className="size-4" />} tone="blue" />
+        <Stat label="Waiting for you" value={pendingPay.length + openComplaints.length} hint={[plural(pendingPay.length, 'payment'), plural(openComplaints.length, 'issue')].join(' · ')} icon={<BadgeCheck className="size-4" />} tone="blue" />
         <Stat label="Avg rating, 7 days" value={avgRating ? avgRating.toFixed(1) : '—'} hint={`${ratings.length} ratings`} icon={<Star className="size-4" />} tone="amber" />
         <Stat label="Wastage, 7 days" value={cooked ? `${wastePct.toFixed(1)}%` : '—'} hint={wastePct > 8 ? 'Above the 8% target' : 'Target: 8% or less'} icon={<Trash2 className="size-4" />} tone={wastePct > 8 ? 'red' : 'green'} />
         <Stat
@@ -88,7 +88,7 @@ export default function Overview() {
             <h2 className="font-display text-lg font-bold">Needs action</h2>
             <LinkButton to="/admin/approvals" variant="ghost" size="sm">Approvals <ArrowRight className="size-4" /></LinkButton>
           </div>
-          {pendingPay.length + pendingPause.length + openComplaints.length === 0 ? (
+          {pendingPay.length + openComplaints.length + awaySoon.length === 0 ? (
             <p className="mt-4 rounded-xl bg-leaf-50 p-4 text-sm font-medium text-leaf">All clear. Nothing is waiting.</p>
           ) : (
             <ul className="mt-3 divide-y divide-line">
@@ -98,21 +98,9 @@ export default function Overview() {
                     <Avatar name={name(p.user_id)} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[15px] font-semibold">{name(p.user_id)} paid {formatINR(p.amount)}</p>
-                      <p className="truncate text-xs text-muted">{paymentLabel(p, ops.plans, ops.packs)} · UTR {p.utr} · {formatDateTime(p.created_at)}</p>
+                      <p className="truncate text-xs text-muted">{paymentLabel(p, ops.plans, ops.packs)} · UTR {p.utr}{p.wallet_used > 0 ? ` · +${formatINR(p.wallet_used)} wallet` : ''} · {formatDateTime(p.created_at)}</p>
                     </div>
                     <Badge tone="amber">Payment</Badge>
-                  </Link>
-                </li>
-              ))}
-              {pendingPause.map((p) => (
-                <li key={p.id}>
-                  <Link to="/admin/approvals?tab=pauses" className="flex items-center gap-3 py-3 hover:opacity-80">
-                    <Avatar name={name(p.user_id)} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[15px] font-semibold">{name(p.user_id)} wants to pause</p>
-                      <p className="truncate text-xs text-muted">{formatDate(p.start_date)} – {formatDate(p.end_date)} · {p.reason || 'No reason given'}</p>
-                    </div>
-                    <Badge tone="blue">Pause</Badge>
                   </Link>
                 </li>
               ))}
@@ -128,13 +116,25 @@ export default function Overview() {
                   </Link>
                 </li>
               ))}
+              {awaySoon.map((p) => (
+                <li key={p.id}>
+                  <Link to="/admin/approvals?tab=skips" className="flex items-center gap-3 py-3 hover:opacity-80">
+                    <Avatar name={name(p.user_id)} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15px] font-semibold">{name(p.user_id)} is not coming</p>
+                      <p className="truncate text-xs text-muted">{formatDate(p.start_date)}{p.end_date > p.start_date ? ` – ${formatDate(p.end_date)}` : ''} · {formatINR(p.credit)} to wallet</p>
+                    </div>
+                    <Badge tone="blue">Away</Badge>
+                  </Link>
+                </li>
+              ))}
             </ul>
           )}
         </Card>
 
         <Card className="p-5">
           <h2 className="font-display text-lg font-bold">Renewals to chase</h2>
-          <p className="text-sm text-muted">Plans ending within 5 days, or ended in the last 10.</p>
+          <p className="text-sm text-muted">Bookings ending within 5 days, or ended in the last 10.</p>
           {renewals.length === 0 ? (
             <p className="mt-4 rounded-xl bg-sand p-4 text-sm text-muted">No renewals due.</p>
           ) : (
@@ -154,7 +154,7 @@ export default function Overview() {
                     </div>
                     {m.phone && (
                       <a
-                        href={whatsappLink(m.phone, `Hi ${m.full_name.split(' ')[0]}, your Radixo plan ${ended ? 'ended' : 'ends'} on ${formatDate(end)}. Renew on the app to keep your seat: ${location.origin}/wallet`)}
+                        href={whatsappLink(m.phone, `Hi ${m.full_name.split(' ')[0]}, your Radixo booking ${ended ? 'ended' : 'ends'} on ${formatDate(end)}. Book again to keep your seat: ${location.origin}/menu`)}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-leaf px-3 text-sm font-semibold text-white hover:brightness-110"

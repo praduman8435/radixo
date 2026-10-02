@@ -1,22 +1,24 @@
 import { useState } from 'react'
-import { CheckCircle2, Sun } from 'lucide-react'
+import { Link } from 'react-router'
+import { Sun, Wallet } from 'lucide-react'
 import { useAuth } from '../../lib/auth'
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
 import { loadDishMap, loadMember, loadPublishedWeeks, loadWeekContent } from '../../lib/data'
-import { addDays, mondayOf, today, weekdayIndex } from '../../lib/dates'
-import { MEAL_NAME, customMeals, dishesFor, memberState, weekForDate } from '../../lib/logic'
-import { MEALS, type Meal } from '../../lib/types'
-import { Avatar, ErrorNote, PageLoader, cx } from '../../components/ui'
+import { DAY_SHORT, addDays, formatDate, mondayOf, today, weekdayIndex } from '../../lib/dates'
+import { bookingsOn, effectiveSelection } from '../../lib/booking'
+import { MEAL_NAME, dishesFor, formatINR, memberState, subLabel, weekForDate } from '../../lib/logic'
+import { MEALS, type Dish } from '../../lib/types'
+import { ErrorNote, PageLoader, cx } from '../../components/ui'
 import { QR } from '../../components/QR'
-import { DayHeader, DayPills, MealRows, darkPaper } from '../../components/menu'
+import { DishImage } from '../../components/DishImage'
 import { AccountSettings } from './Account'
 
 export default function Profile() {
   const { profile } = useAuth()
   const p = profile!
   const t = today()
-  const [day, setDay] = useState(weekdayIndex(t))
+  const [day, setDay] = useState<number | null>(null)
 
   const q = useAsync(async () => {
     const [member, weeks, dishes, attendance, selections] = await Promise.all([
@@ -24,92 +26,132 @@ export default function Profile() {
       api.list('attendance', { eq: { user_id: p.id, date: t } }),
       api.list('selections', { eq: { user_id: p.id } }),
     ])
-    const week = weekForDate(weeks, t) ?? weeks.find((w) => w.week_start === addDays(mondayOf(t), 7))
-    const content = week ? await loadWeekContent(week.id) : { items: [], packs: [] }
-    return { member, week, dishes, attendance, selection: selections.find((s) => s.week_id === week?.id) ?? null, ...content }
+    // Show this week; if nothing is booked in it yet, the next week that is.
+    const cands = [weekForDate(weeks, t), weeks.find((w) => w.week_start === addDays(mondayOf(t), 7))].filter((w): w is NonNullable<typeof w> => !!w)
+    let pick = null
+    for (const week of cands) {
+      const content = await loadWeekContent(week.id)
+      const saved = selections.find((s) => s.week_id === week.id) ?? null
+      const selection = effectiveSelection({ userId: p.id, week, items: content.items, packs: content.packs, selection: saved, subs: member.subs })
+      pick = { week, selection, items: content.items }
+      if (selection) break
+    }
+    return { member, dishes, attendance, week: pick?.week, selection: pick?.selection ?? null, items: pick?.items ?? [] }
   }, [p.id, t])
 
   if (q.loading && !q.data) return <PageLoader />
   if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
-  const { member, week, dishes, attendance, selection, items, packs } = q.data!
+  const { member, week, dishes, attendance, selection, items } = q.data!
   const state = memberState(p.id, member.subs, member.payments, member.pauses)
   const active = state.kind === 'active' && !state.paused
-  const myMeals: Meal[] = state.kind === 'active' ? state.sub.meals : selection?.mode === 'custom' ? customMeals(selection.custom) : selection?.mode === 'pack' ? packs.find((x) => x.id === selection.pack_id)?.meals ?? [] : []
-  const todayIdx = weekdayIndex(t)
   const isThisWeek = week?.week_start === mondayOf(t)
-  const plateMeals = (myMeals.length ? myMeals : MEALS).filter((m) => isThisWeek && dishesFor(items, todayIdx, m, selection).length > 0)
-  const weekMeals = myMeals.length ? myMeals : MEALS.filter((m) => items.some((it) => it.meal === m))
+  const todayIdx = weekdayIndex(t)
+  // Only the meals the member booked for that week (a pack's picks list every meal).
+  const booked = new Set(week ? [0, 6].flatMap((i) => bookingsOn(member.subs, p.id, addDays(week.week_start, i))).flatMap((b) => b.meals) : [])
+  const names = (d: number, m: (typeof MEALS)[number]) => (booked.size && !booked.has(m) ? [] : dishesFor(items, d, m, selection)).map((id) => dishes.get(id)).filter((x): x is Dish => !!x)
+  const todayMeals = isThisWeek && selection ? MEALS.filter((m) => names(todayIdx, m).length > 0) : []
+  const d = day ?? (isThisWeek ? todayIdx : 0)
+  const dayMeals = selection ? MEALS.filter((m) => names(d, m).length > 0) : []
+
+  const status =
+    state.kind === 'active' ? (state.paused ? 'Not coming today' : 'Active')
+    : state.kind === 'pending' ? 'Payment being checked'
+    : state.kind === 'upcoming' ? `Starts ${formatDate(state.sub.start_date)}`
+    : 'No booking'
 
   return (
-    <div className="-mx-4 -mt-4 sm:-mx-6 md:mx-auto md:mt-6 md:max-w-3xl md:overflow-hidden md:rounded-[28px]">
-      {/* QR pass */}
-      <section className="bg-gradient-to-b from-white to-[#cfcfcf] px-6 pb-8 pt-12">
-        <div className="relative mx-auto max-w-[300px]">
-          <div className="absolute -top-11 left-1/2 z-10 -translate-x-1/2 rounded-full border-[5px] border-maroon bg-white p-1 shadow-[0_8px_16px_-8px_rgba(0,0,0,0.6)]">
-            <Avatar name={p.full_name} className="size-[74px] bg-turmeric-50 text-2xl" />
-          </div>
-          <div className="animate-rise rounded-[28px] bg-gradient-to-b from-[#b8261b] to-[#3a0805] p-[7px] shadow-[0_16px_28px_-14px_rgba(0,0,0,0.7)]">
-            <div className="flex flex-col items-center rounded-[22px] bg-white px-6 pb-5 pt-12">
-              <QR value={p.member_code} size={200} label={`Meal pass QR for ${p.member_code}`} className={cx(!active && 'opacity-40')} />
-              <p className="mt-3 font-display text-[28px] font-bold tracking-[0.12em]">{p.member_code}</p>
-              <p className="text-sm font-semibold text-muted">{p.full_name}</p>
+    <div className="mx-auto grid max-w-5xl gap-6 pb-10 pt-2 text-white md:grid-cols-[340px_1fr] md:pt-6">
+      <div className="space-y-4 md:sticky md:top-24 md:self-start">
+        {/* Pass */}
+        <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-b from-[#2a1513] to-[#141010] p-5 ring-1 ring-white/10">
+          <span className="pointer-events-none absolute -right-16 -top-16 size-52 rounded-full bg-[radial-gradient(circle,rgba(201,52,28,0.35),transparent_65%)]" aria-hidden />
+          <div className="relative flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/45">Meal pass</p>
+              <p className="mt-1 truncate text-[18px] font-semibold">{p.full_name}</p>
             </div>
+            <span className={cx('shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold', active ? 'bg-[#34c759]/15 text-[#5ee07f]' : 'bg-white/10 text-white/65')}>{status}</span>
           </div>
-        </div>
-        <div className={cx('mx-auto mt-6 flex max-w-sm items-center justify-center gap-2 rounded-2xl px-5 py-2.5 font-display text-[19px] font-bold text-white shadow-[0_8px_16px_-8px_rgba(0,0,0,0.6)]', active ? 'bg-brand-grad' : 'bg-ink/80')}>
-          {active ? <><CheckCircle2 className="size-5" /> Scan QR to get the meal</> : state.kind === 'active' ? 'Your plan is paused today' : 'No active plan: get one in Wallet'}
-        </div>
-        <p className="mt-3 flex items-center justify-center gap-1.5 text-xs font-medium text-ink/60"><Sun className="size-3.5" /> Turn your brightness up at the counter</p>
-      </section>
-
-      {/* Today's plate */}
-      <section className="bg-[#dcdcdc] px-4 pb-8 pt-6">
-        <h2 className="text-center font-script-italic text-[30px] text-maroon">What&rsquo;s on your plate today?</h2>
-        {plateMeals.length === 0 ? (
-          <p className="mt-4 rounded-2xl bg-white/70 p-4 text-center text-sm text-muted">{isThisWeek ? 'Nothing on your plan today.' : 'This week’s menu isn’t published yet.'}</p>
-        ) : (
-          <div className={cx('mt-4 grid gap-1.5 overflow-hidden rounded-[22px] shadow-[0_14px_26px_-16px_rgba(0,0,0,0.7)]', plateMeals.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
-            {plateMeals.map((m) => {
-              const came = attendance.some((a) => a.meal === m)
-              return (
-                <div key={m} className="flex flex-col" style={darkPaper}>
-                  <div className="bg-brand-grad flex items-center justify-center gap-2 py-2.5">
-                    <h3 className="font-banner text-[24px] leading-none text-white">{MEAL_NAME[m]}</h3>
-                    {came && <CheckCircle2 className="size-5 text-white" aria-label="Checked in" />}
-                  </div>
-                  <ul className="flex-1 space-y-3 px-5 py-4">
-                    {dishesFor(items, todayIdx, m, selection).map((d) => <li key={d} className="font-display text-[19px] font-semibold text-white">{dishes.get(d)?.name}</li>)}
-                  </ul>
-                </div>
-              )
-            })}
+          <div className="relative mx-auto mt-5 w-fit rounded-2xl bg-white p-3">
+            <QR value={p.member_code} size={196} label={`Meal pass QR for ${p.member_code}`} className={cx(!active && 'opacity-40')} />
           </div>
-        )}
-      </section>
-
-      {/* This week */}
-      {week && (
-        <section className="pb-2" style={darkPaper}>
-          <div className="relative -mt-1 rounded-t-[22px] border-x-2 border-t-[3px] border-maroon bg-black py-3 text-center">
-            <h2 className="font-script-italic text-[26px] text-white">Your menu of the week</h2>
-          </div>
-          <div className="bg-[#dcdcdc] px-4 py-6">
-            <DayPills value={day} onChange={setDay} />
-          </div>
-          <div className="animate-rise" key={day}>
-            <DayHeader day={day} />
-            <MealRows meals={weekMeals.length ? weekMeals : MEALS} render={(m) => dishesFor(items, day, m, selection).map((d) => dishes.get(d)?.name).filter(Boolean).join(' + ')} empty="Not included" />
-          </div>
-          <div className="relative flex justify-end overflow-hidden">
-            <div className="pointer-events-none absolute bottom-10 right-20 size-56 rounded-full bg-[#ff7a1a]/20 blur-3xl" aria-hidden />
-            <img src="/menu/chef-flame.jpg" alt="" className="relative w-[70%] max-w-xs mix-blend-lighten" />
-          </div>
+          <p className="relative mt-3 text-center text-[22px] font-bold tracking-[0.18em] tabular">{p.member_code}</p>
+          <p className="relative mt-1 flex items-center justify-center gap-1.5 text-xs text-white/45"><Sun className="size-3.5" /> Show this at the counter</p>
+          {state.kind === 'active' || state.kind === 'upcoming' ? (
+            <p className="relative mt-4 rounded-xl bg-black/30 px-3 py-2 text-center text-xs text-white/65">{subLabel(state.sub, member.plans)} · till {formatDate(state.sub.end_date)}</p>
+          ) : state.kind !== 'pending' ? (
+            <Link to="/menu" className="bg-brand-grad relative mt-4 flex h-10 items-center justify-center rounded-full text-sm font-semibold">Book a menu</Link>
+          ) : null}
         </section>
-      )}
 
-      <section className="px-4 pt-8">
+        <Link to="/wallet" className="flex items-center gap-3 rounded-2xl bg-white/[0.04] p-4 ring-1 ring-white/10 transition-colors hover:bg-white/[0.07]">
+          <span className="grid size-10 place-items-center rounded-xl bg-white/[0.06]"><Wallet className="size-5 text-white/75" /></span>
+          <span className="flex-1">
+            <span className="block text-xs text-white/50">Wallet balance</span>
+            <span className="block text-lg font-bold tabular">{formatINR(member.wallet.balance)}</span>
+          </span>
+          <span className="text-sm font-semibold text-white/55">Open →</span>
+        </Link>
+      </div>
+
+      <div className="min-w-0 space-y-6">
+        <section>
+          <h2 className="mb-3 text-[17px] font-semibold">Today on your plate</h2>
+          {todayMeals.length === 0 ? (
+            <p className="rounded-2xl bg-white/[0.04] p-5 text-sm text-white/55 ring-1 ring-white/10">
+              {state.kind === 'upcoming' ? `Your booking starts ${formatDate(state.sub.start_date, { weekday: true })}.` : !isThisWeek && selection ? 'Nothing booked for today.' : !week ? 'This week’s menu isn’t out yet.' : selection ? 'Nothing booked for today.' : <>No menu booked yet. <Link to="/menu" className="font-semibold text-white hover:underline">See menus</Link></>}
+            </p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {todayMeals.map((m) => (
+                <article key={m} className="rounded-2xl bg-white/[0.04] p-4 ring-1 ring-white/10">
+                  <div className="flex items-center gap-3">
+                    <img src={`/meals/${m}.png`} alt="" className="size-9 rounded-full object-cover" />
+                    <p className="flex-1 font-semibold">{MEAL_NAME[m]}</p>
+                    {attendance.some((a) => a.meal === m) && <span className="rounded-full bg-[#34c759]/15 px-2 py-0.5 text-[11px] font-semibold text-[#5ee07f]">Eaten</span>}
+                  </div>
+                  <p className="mt-2.5 text-sm leading-relaxed text-white/65">{names(todayIdx, m).map((d) => d.name).join(' · ')}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {week && selection && (
+          <section>
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 className="text-[17px] font-semibold">{isThisWeek ? 'Your week' : `Week of ${formatDate(week.week_start)}`}</h2>
+              <Link to="/menu/create" className="text-sm font-semibold text-white/55 hover:text-white">Edit menu →</Link>
+            </div>
+            <div className="no-scrollbar mb-3 flex gap-1.5 overflow-x-auto">
+              {DAY_SHORT.map((n, i) => {
+                const date = addDays(week.week_start, i)
+                return (
+                  <button key={n} type="button" onClick={() => setDay(i)} aria-pressed={d === i} className={cx('h-9 shrink-0 rounded-full px-3.5 text-sm font-semibold transition-colors', d === i ? 'bg-white text-ink' : 'bg-white/[0.06] text-white/70 hover:bg-white/10')}>
+                    {date === t ? 'Today' : n} <span className={d === i ? 'text-ink/45' : 'text-white/35'}>{Number(date.slice(8))}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="divide-y divide-white/[0.06] rounded-2xl bg-white/[0.04] ring-1 ring-white/10">
+              {dayMeals.length === 0 ? (
+                <p className="p-5 text-sm text-white/55">Nothing booked this day.</p>
+              ) : dayMeals.map((m) => (
+                <div key={m} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-start">
+                  <span className="w-24 shrink-0 pt-1 text-sm font-semibold">{MEAL_NAME[m]}</span>
+                  <div className="flex flex-1 flex-wrap gap-2">
+                    {names(d, m).map((x) => (
+                      <span key={x.id} className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] py-1 pl-1 pr-3 text-sm text-white/85 ring-1 ring-white/10"><DishImage dish={x} className="size-6 rounded-full" />{x.name}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <AccountSettings />
-      </section>
+      </div>
     </div>
   )
 }

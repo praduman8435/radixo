@@ -1,17 +1,16 @@
 // Loaders and write actions used across screens.
 import { api } from './backend'
-import { addDays, defaultDeadline, today } from './dates'
-import { customMeals, nextSubscriptionDates, pauseDays, weekBookingDates, weekPlanMeals } from './logic'
-import type { CustomMenu, Meal, MenuItem, Pack, Pause, Payment, Picks, Plan, Selection, Settings, Subscription, Week } from './types'
+import { defaultDeadline, today } from './dates'
+import type { BookingSpec, CustomMenu, Meal, MenuItem, Pack, Pause, Payment, Picks, Plan, Selection, Settings, Week } from './types'
 
 export const DEFAULT_SETTINGS: Settings = {
-  id: 1, upi_id: '', upi_name: 'Radixo', whatsapp: '', address: '',
+  id: 1, upi_id: '', upi_name: 'Radixo', whatsapp: '', address: '', discount_1m: 5, discount_3m: 8, discount_6m: 12, skip_notice_hours: 24,
   breakfast_time: '7:30 – 9:30 AM', lunch_time: '12:00 – 3:00 PM', snacks_time: '5:00 – 6:00 PM', dinner_time: '7:30 – 10:30 PM',
   attendance_factor: 0.8, buffer_pct: 10, min_pause_days: 4,
 }
 
 export async function loadSettings(): Promise<Settings> {
-  return (await api.get('settings', 1)) ?? DEFAULT_SETTINGS
+  return { ...DEFAULT_SETTINGS, ...((await api.get('settings', 1)) ?? {}) }
 }
 
 export async function loadPlans(activeOnly = true): Promise<Plan[]> {
@@ -20,14 +19,15 @@ export async function loadPlans(activeOnly = true): Promise<Plan[]> {
 }
 
 export async function loadMember(userId: string) {
-  const [subs, payments, pauses, plans, settings] = await Promise.all([
+  const [subs, payments, pauses, plans, settings, wallet] = await Promise.all([
     api.list('subscriptions', { eq: { user_id: userId } }),
     api.list('payments', { eq: { user_id: userId }, order: { col: 'created_at', asc: false } }),
     api.list('pauses', { eq: { user_id: userId }, order: { col: 'created_at', asc: false } }),
     loadPlans(false),
     loadSettings(),
+    loadWallet(userId),
   ])
-  return { subs, payments, pauses, plans, settings }
+  return { subs, payments, pauses: pauses.filter((p) => p.status === 'approved' || p.status === 'requested'), allPauses: pauses, plans, settings, wallet }
 }
 
 export async function loadPublishedWeeks(): Promise<Week[]> {
@@ -57,84 +57,40 @@ export function savePicks(userId: string, weekId: string, mode: Selection['mode'
   )
 }
 
-/** What a payment is for: a plan, a ready-made menu for its week, or the student's custom menu for a week. */
-export type Purchase = { kind: 'plan'; plan: Plan } | { kind: 'pack'; pack: Pack; amount: number } | { kind: 'custom'; weekId: string; amount: number }
+// ---------- Bookings & wallet (prices and credit are computed by the database) ----------
 
-export function submitPayment(userId: string, what: Purchase, utr: string) {
-  return api.insert('payments', {
-    user_id: userId,
-    plan_id: what.kind === 'plan' ? what.plan.id : null,
-    pack_id: what.kind === 'pack' ? what.pack.id : null,
-    week_id: what.kind === 'pack' ? what.pack.week_id : what.kind === 'custom' ? what.weekId : null,
-    amount: what.kind === 'plan' ? what.plan.price : what.amount,
-    method: 'upi', utr: utr.trim(), status: 'pending', admin_note: '', reviewed_at: null,
-  })
+/** Book a menu (or pay a week's extra). The wallet is used first; `utr` is needed only for what's left. */
+export function book(spec: BookingSpec, utr = '') {
+  return api.rpc<Payment>('book', { p_spec: spec, p_utr: utr })
 }
 
-export function requestPause(userId: string, subId: string, start: string, end: string, reason: string) {
-  return api.insert('pauses', { user_id: userId, subscription_id: subId, start_date: start, end_date: end, reason, status: 'requested' })
+/** Mark "not coming" for a date range; the value of those days goes to the wallet. */
+export function markSkip(start: string, end: string, reason = '') {
+  return api.rpc<Pause>('mark_skip', { p_start: start, p_end: end, p_reason: reason })
+}
+
+export function cancelSkip(id: string) {
+  return api.rpc<Pause>('cancel_skip', { p_id: id })
+}
+
+export async function loadWallet(userId: string) {
+  const txns = await api.list('wallet_txns', { eq: { user_id: userId }, order: { col: 'created_at', asc: false } })
+  return { txns, balance: txns.reduce((s, t) => s + t.amount, 0) }
 }
 
 // ---------- Admin actions ----------
 
-/** Approve a payment and start what it paid for: a plan (after any current one) or a week of menu. */
-export async function approvePayment(payment: Payment, note = '') {
-  if (payment.plan_id) {
-    const plan = await api.get('plans', payment.plan_id)
-    if (!plan) throw new Error('That plan no longer exists.')
-    const subs = await api.list('subscriptions', { eq: { user_id: payment.user_id } })
-    const dates = nextSubscriptionDates(subs, payment.user_id, plan)
-    await api.insert('subscriptions', { user_id: payment.user_id, plan_id: plan.id, pack_id: null, payment_id: payment.id, ...dates, meals: plan.meals, status: 'active' })
-  } else if (payment.week_id) {
-    const week = await api.get('weeks', payment.week_id)
-    if (!week) throw new Error('That week no longer exists.')
-    let meals: Meal[]
-    if (payment.pack_id) {
-      const pack = await api.get('packs', payment.pack_id)
-      if (!pack) throw new Error('That menu no longer exists.')
-      meals = pack.meals
-      // Booking a ready-made menu also sets it as the student's menu for that week.
-      await savePicks(payment.user_id, week.id, 'pack', pack.id, pack.picks)
-    } else {
-      const sel = (await api.list('selections', { eq: { user_id: payment.user_id, week_id: week.id } }))[0]
-      const covered = weekPlanMeals(await api.list('subscriptions', { eq: { user_id: payment.user_id } }), payment.user_id, week)
-      const all = sel ? customMeals(sel.custom ?? {}) : []
-      meals = all.filter((m) => !covered.includes(m))
-      if (meals.length === 0) meals = all
-      if (meals.length === 0) throw new Error('The student’s custom menu for that week is empty.')
-    }
-    await api.insert('subscriptions', { user_id: payment.user_id, plan_id: null, pack_id: payment.pack_id, payment_id: payment.id, ...weekBookingDates(week), meals, status: 'active' })
-  }
-  return api.update('payments', payment.id, { status: 'approved', admin_note: note, reviewed_at: new Date().toISOString() })
+export function approvePayment(payment: Payment, note = '') {
+  return api.rpc<Payment>('approve_payment', { p_id: payment.id, p_note: note })
 }
 
 export function rejectPayment(payment: Payment, note: string) {
-  return api.update('payments', payment.id, { status: 'rejected', admin_note: note, reviewed_at: new Date().toISOString() })
+  return api.rpc<Payment>('reject_payment', { p_id: payment.id, p_note: note })
 }
 
-/** Record a cash payment at the counter and activate the plan immediately. */
-export async function recordCashPayment(userId: string, plan: Plan) {
-  const p = await api.insert('payments', {
-    user_id: userId, plan_id: plan.id, pack_id: null, week_id: null, amount: plan.price, method: 'cash', utr: '', status: 'pending', admin_note: 'Cash at counter', reviewed_at: null,
-  })
-  return approvePayment(p, 'Cash at counter')
-}
-
-/** Approving a pause pushes the plan's end date out by the paused days. */
-export async function approvePause(pause: Pause) {
-  const sub = await api.get('subscriptions', pause.subscription_id)
-  if (sub) {
-    const later = (await api.list('subscriptions', { eq: { user_id: pause.user_id } })).filter((s: Subscription) => s.start_date > sub.end_date && s.status === 'active')
-    const n = pauseDays(pause)
-    await api.update('subscriptions', sub.id, { end_date: addDays(sub.end_date, n) })
-    // Renewals queued after this plan shift too, so they stay back to back.
-    for (const s of later) await api.update('subscriptions', s.id, { start_date: addDays(s.start_date, n), end_date: addDays(s.end_date, n) })
-  }
-  return api.update('pauses', pause.id, { status: 'approved' })
-}
-
-export function rejectPause(pause: Pause) {
-  return api.update('pauses', pause.id, { status: 'rejected' })
+/** Cash at the counter (or any correction): money goes into the student's wallet. */
+export function addWalletMoney(userId: string, amount: number, note: string) {
+  return api.insert('wallet_txns', { user_id: userId, amount: Math.round(amount), kind: 'admin', note: note || 'Added by the owner', ref_id: null })
 }
 
 export async function checkIn(userId: string, meal: Meal, date = today()) {

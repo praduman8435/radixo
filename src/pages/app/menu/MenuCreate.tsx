@@ -6,7 +6,7 @@ import { useAuth } from '../../../lib/auth'
 import { useAsync } from '../../../lib/useAsync'
 import { loadSettings, savePicks } from '../../../lib/data'
 import { DAY_NAMES, addDays, formatDate, formatWeekRange, mondayOf, today, weekdayIndex } from '../../../lib/dates'
-import { MEAL_NAME, customCharge, customCount, customMeals, formatINR, isLocked, mealsLabel, slotCatalog, weekPlanMeals } from '../../../lib/logic'
+import { MEAL_NAME, customCount, customMeals, customTotal, formatINR, isLocked, mealsLabel, slotCatalog } from '../../../lib/logic'
 import { MEALS, slotKey, type CustomMenu, type Dish, type Meal, type MenuItem, type Settings } from '../../../lib/types'
 import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { useToast } from '../../../components/toast'
@@ -55,8 +55,9 @@ export default function MenuCreate() {
   }, [menu, ready, q.data?.week])
 
   const dishes = q.data?.dishes
-  const planMeals = useMemo(() => (q.data?.week && q.data.member && uid ? weekPlanMeals(q.data.member.subs, uid, q.data.week) : []), [q.data, uid])
-  const charge = useMemo(() => (dishes ? customCharge(menu, dishes, planMeals) : 0), [menu, dishes, planMeals])
+  const credit = q.data?.credit ?? 0 // already paid for this week by a booking
+  const total = useMemo(() => (dishes ? customTotal(menu, dishes) : 0), [menu, dishes])
+  const charge = credit > 0 ? Math.max(0, total - credit) : total
 
   // A guest tapped Save: once they've logged in (and their plan data reloaded), save straight away.
   useEffect(() => {
@@ -79,7 +80,7 @@ export default function MenuCreate() {
     )
   }
 
-  const covered = planMeals.length > 0
+  const covered = credit > 0
   const count = customCount(menu)
   const daysFilled = DAY_NAMES.filter((_, i) => dayCount(menu, i) > 0).length
   const date = addDays(week.week_start, day)
@@ -130,11 +131,11 @@ export default function MenuCreate() {
     try {
       await savePicks(uid, week!.id, 'custom', null, {}, menu)
       try { localStorage.removeItem(draftKey(week!.id)) } catch { /* ignore */ }
-      if (charge === 0) {
+      if (!covered) nav(`/wallet?custom=${week!.id}`)
+      else if (charge > 0) nav(`/wallet?extra=${week!.id}`)
+      else {
         toast(`Your menu for ${formatWeekRange(week!.week_start)} is saved`)
         nav('/menu/view/mine')
-      } else {
-        nav(`/wallet?custom=${week!.id}`)
       }
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not save', 'error')
@@ -193,14 +194,13 @@ export default function MenuCreate() {
           {MEALS.filter((meal) => slotCatalog(items, day, meal).length > 0).map((meal) => {
             const chosen = (menu[slotKey(day, meal)] ?? []).map((id) => dishes!.get(id)).filter((x): x is Dish => !!x)
             const sub = chosen.reduce((s, d) => s + d.price, 0)
-            const inPlan = planMeals.includes(meal)
             if (chosen.length === 0) {
               return (
                 <button key={meal} type="button" onClick={() => setPicker(meal)} className="group flex w-full items-center gap-3 rounded-2xl border border-dashed border-white/15 px-4 py-3 text-left transition hover:border-brand/60 hover:bg-white/[0.03]">
                   <img src={`/meals/${meal}.png`} alt="" className="size-10 rounded-full opacity-80 transition group-hover:opacity-100" />
                   <span className="min-w-0 flex-1">
                     <span className="block font-semibold">{MEAL_NAME[meal]}</span>
-                    <span className="block text-xs text-white/45">{inPlan ? 'In your plan · ' : ''}{timesOf(settings.data, meal)}</span>
+                    <span className="block text-xs text-white/45">{timesOf(settings.data, meal)}</span>
                   </span>
                   <span className="bg-brand-grad inline-flex h-9 items-center gap-1 rounded-full px-4 text-sm font-semibold text-white shadow-[0_8px_18px_-8px_rgba(222,59,44,0.8)]"><Plus className="size-4" strokeWidth={2.6} /> Add</span>
                 </button>
@@ -212,7 +212,7 @@ export default function MenuCreate() {
                   <img src={`/meals/${meal}.png`} alt="" className="size-10 rounded-full" />
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold">{MEAL_NAME[meal]}</p>
-                    <p className="text-xs text-white/45">{inPlan ? 'In your plan · ' : ''}{timesOf(settings.data, meal)}</p>
+                    <p className="text-xs text-white/45">{timesOf(settings.data, meal)}</p>
                   </div>
                   <span className="text-sm font-semibold tabular text-white/70">{formatINR(sub)}</span>
                 </header>
@@ -240,12 +240,12 @@ export default function MenuCreate() {
           <div className="min-w-0">
             <p className="flex items-baseline gap-1">
               <span className="font-display text-[22px] font-bold tabular">{formatINR(charge)}</span>
-              <span className="text-xs text-white/50">{covered ? (charge ? 'extra this week' : 'included in your plan') : '/ week'}</span>
+              <span className="text-xs text-white/50">{covered ? (charge ? 'extra this week' : 'included in your booking') : '/ week'}</span>
             </p>
             <p className="truncate text-xs text-white/50">{count ? `${count} dish${count === 1 ? '' : 'es'} · ${mealsLabel(customMeals(menu))}` : 'Add dishes to get started'}</p>
           </div>
           <button type="button" onClick={save} disabled={saving || count === 0} className="bg-brand-grad inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-5 text-[15px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50">
-            {saving ? 'Saving…' : charge > 0 ? `Continue · ${formatINR(charge)}` : 'Save menu'}
+            {saving ? 'Saving…' : covered ? (charge > 0 ? `Save · pay ${formatINR(charge)}` : 'Save menu') : 'Save & book'}
           </button>
         </div>
       </div>

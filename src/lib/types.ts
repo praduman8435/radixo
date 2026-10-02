@@ -104,8 +104,10 @@ export interface Payment {
   plan_id: string | null // a plan purchase…
   pack_id: string | null // …or a ready-made menu booked for its week
   week_id: string | null // the week a menu booking (ready-made or custom) is for
-  amount: number
-  method: 'upi' | 'cash'
+  amount: number // ₹ to pay by UPI/cash (after wallet)
+  wallet_used: number // ₹ taken from the wallet for this payment
+  details: (Partial<Subscription> & { kind?: 'pack' | 'custom' | 'extra'; total?: number; label?: string }) | null
+  method: 'upi' | 'cash' | 'wallet'
   utr: string
   status: PaymentStatus
   admin_note: string
@@ -113,27 +115,52 @@ export interface Payment {
   reviewed_at: string | null
 }
 
+/** A booking: a ready-made or custom menu paid for N weeks. Later weeks carry the menu over. */
 export interface Subscription {
   id: string
   user_id: string
-  plan_id: string | null
-  pack_id: string | null
+  plan_id: string | null // legacy fixed plans
+  pack_id: string | null // ready-made menu booked (first week's pack)
   payment_id: string | null
-  start_date: string
-  end_date: string // inclusive
+  start_date: string // a Monday
+  end_date: string // inclusive, a Sunday
   meals: Meal[]
   status: 'active' | 'cancelled'
+  source: 'pack' | 'custom' | 'plan'
+  pack_name: string // carried to later weeks by name
+  template: CustomMenu // custom menus: the dishes to carry over
+  weeks: number
+  weekly_price: number // ₹ menu value per week, before discount
+  discount_pct: number
   created_at: string
 }
 
+/** What a payment pays for; the database fills in prices and dates. */
+export type BookingSpec =
+  | { kind: 'pack'; pack_id: string; weeks: number }
+  | { kind: 'custom'; week_id: string; weeks: number }
+  | { kind: 'extra'; week_id: string }
+
+export interface WalletTxn {
+  id: string
+  user_id: string
+  amount: number // + credit, − debit (₹)
+  kind: 'skip' | 'skip_cancelled' | 'payment' | 'refund' | 'admin'
+  note: string
+  ref_id: string | null
+  created_at: string
+}
+
+/** A "not coming" range; its value is credited to the wallet. */
 export interface Pause {
   id: string
   user_id: string
   subscription_id: string
+  credit: number
   start_date: string
   end_date: string // inclusive
   reason: string
-  status: 'requested' | 'approved' | 'rejected'
+  status: 'requested' | 'approved' | 'rejected' | 'cancelled'
   created_at: string
 }
 
@@ -181,6 +208,10 @@ export interface Settings {
   attendance_factor: number // share of active members expected to eat, used until real data exists
   buffer_pct: number // extra % cooked on top of expected
   min_pause_days: number
+  discount_1m: number // % off a 1-month booking
+  discount_3m: number
+  discount_6m: number
+  skip_notice_hours: number
 }
 
 export interface Tables {
@@ -198,6 +229,7 @@ export interface Tables {
   feedback: Feedback
   wastage: Wastage
   settings: Settings
+  wallet_txns: WalletTxn
 }
 
 export type TableName = keyof Tables

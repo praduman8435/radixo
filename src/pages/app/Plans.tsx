@@ -1,205 +1,334 @@
-import { useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router'
-import { Check, Copy, Hourglass, Smartphone, ArrowLeft, PartyPopper } from 'lucide-react'
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
+import { ArrowRight, CalendarDays, CalendarX2, Check, Copy, Hourglass, PartyPopper, Smartphone, Wallet as WalletIcon } from 'lucide-react'
 import { useAuth } from '../../lib/auth'
-import { useAsync } from '../../lib/useAsync'
 import { api } from '../../lib/backend'
-import { loadDishMap, loadMember, loadPlans, loadSettings, submitPayment, type Purchase } from '../../lib/data'
-import { LoginFlow } from '../../components/LoginSheet'
-import { formatDate, formatWeekRange } from '../../lib/dates'
-import { customCharge, formatINR, mealsLabel, memberState, nextSubscriptionDates, weekBookingDates, weekPlanMeals } from '../../lib/logic'
-import type { Plan } from '../../lib/types'
-import { Badge, Button, Card, ErrorNote, Input, LinkButton, PageHeader, PageLoader, cx } from '../../components/ui'
+import { useAsync } from '../../lib/useAsync'
+import { book, loadDishMap, loadMember, loadSettings } from '../../lib/data'
+import { addDays, formatDate, formatDateTime, today } from '../../lib/dates'
+import { DURATIONS, bookingStart, bookingTotal, customMealsOf, customValue, discountFor, weekCredit } from '../../lib/booking'
+import { MEAL_NAME, formatINR, mealsLabel, paymentLabel, subLabel } from '../../lib/logic'
+import { MEALS, type BookingSpec, type Meal } from '../../lib/types'
+import { ErrorNote, PageLoader, cx } from '../../components/ui'
 import { QR } from '../../components/QR'
 import { useToast } from '../../components/toast'
+import { LoginFlow } from '../../components/LoginSheet'
+import { readDraft } from './menu/useMenuData'
+
+const PACK_PHOTOS = ['/photos/thali-classic.jpg', '/photos/thali-fullday.jpg', '/photos/thali-protein.jpg', '/photos/thali-light.jpg']
+
+const Panel = ({ children, className }: { children: ReactNode; className?: string }) => <div className={cx('rounded-2xl bg-white/[0.04] ring-1 ring-white/10', className)}>{children}</div>
 
 export default function Plans() {
-  const { profile } = useAuth()
-  const uid = profile?.role === 'student' ? profile.id : null
-  const toast = useToast()
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
   const packId = params.get('pack')
   const customWeek = params.get('custom')
-  const q = useAsync(async () => {
-    // Guests see plans and prices; their own subscriptions/payments load once they log in.
-    const member = uid ? await loadMember(uid) : { subs: [], payments: [], pauses: [], plans: await loadPlans(false), settings: await loadSettings() }
-    // A menu booking from the Menu tab arrives as ?pack=<id> or ?custom=<week id>.
-    const pack = packId ? await api.get('packs', packId) : null
-    const weekId = pack?.week_id ?? customWeek
-    const week = weekId ? await api.get('weeks', weekId) : null
-    let customAmount = 0
-    if (customWeek && week && uid) {
-      const [sel, dishes] = await Promise.all([api.list('selections', { eq: { user_id: uid, week_id: week.id } }), loadDishMap()])
-      customAmount = sel[0]?.mode === 'custom' ? customCharge(sel[0].custom, dishes, weekPlanMeals(member.subs, uid, week)) : 0
-    }
-    return { ...member, pack, week, customAmount }
-  }, [uid, packId, customWeek])
-  const [selected, setSelected] = useState<Plan | null>(null)
+  const extraWeek = params.get('extra')
+  return (
+    <div className="-mx-4 -mt-4 min-h-[calc(100dvh-64px)] bg-[#0f0b0a] px-4 pb-16 pt-6 text-white sm:-mx-6 sm:px-6">
+      <div className="mx-auto max-w-3xl">
+        {packId || customWeek || extraWeek ? <Checkout packId={packId} customWeek={customWeek} extraWeek={extraWeek} /> : <WalletHome />}
+      </div>
+    </div>
+  )
+}
+
+// ---------- Checkout ----------
+
+function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; customWeek: string | null; extraWeek: string | null }) {
+  const { profile } = useAuth()
+  const uid = profile?.role === 'student' && profile.full_name ? profile.id : null
+  const toast = useToast()
+  const nav = useNavigate()
+  const [params] = useSearchParams()
+  const [weeks, setWeeks] = useState<number>(() => ([1, 4, 13, 26].includes(Number(params.get('weeks'))) ? Number(params.get('weeks')) : 4))
   const [utr, setUtr] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [done, setDone] = useState(false)
+  const [done, setDone] = useState<{ pending: boolean } | null>(null)
+
+  const q = useAsync(async () => {
+    const [settings, dishes, member] = await Promise.all([loadSettings(), loadDishMap(), uid ? loadMember(uid) : Promise.resolve(null)])
+    const first = packId ? await api.get('packs', packId) : null
+    const packs = first ? await api.list('packs', { eq: { week_id: first.week_id } }) : []
+    const weekId = first?.week_id ?? customWeek ?? extraWeek
+    const week = weekId ? await api.get('weeks', weekId) : null
+    const sel = week && uid ? (await api.list('selections', { eq: { user_id: uid, week_id: week.id } }))[0] ?? null : null
+    const photoIdx = first ? Math.max(0, packs.filter((p) => p.price > 0).findIndex((p) => p.id === first.id)) : 0
+    return { settings, dishes, member, pack: first, packs, week, sel, photoIdx }
+  }, [uid, packId, customWeek, extraWeek])
 
   if (q.loading && !q.data) return <PageLoader />
-  if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
-  const { subs, payments, pauses, plans, settings, pack, week, customAmount } = q.data!
-  const state = uid ? memberState(uid, subs, payments, pauses) : ({ kind: 'none' } as const)
+  const d = q.data
+  if (!d?.week) return <Empty title="This booking isn’t available" />
+  const { settings, dishes, member, pack, packs, week, sel } = d
+  const subs = member?.subs ?? []
+  const balance = member?.wallet.balance ?? 0
 
-  type Checkout = { name: string; amount: number; purchase: Purchase; start: string; end: string }
-  let checkout: Checkout | null = null
-  if (selected) {
-    const d = nextSubscriptionDates(subs, uid ?? '', selected)
-    checkout = { name: selected.name, amount: selected.price, purchase: { kind: 'plan', plan: selected }, start: d.start_date, end: d.end_date }
-  } else if (pack && week && pack.price > 0) {
-    const d = weekBookingDates(week)
-    checkout = { name: `${pack.name} menu`, amount: pack.price, purchase: { kind: 'pack', pack, amount: pack.price }, start: d.start_date, end: d.end_date }
-  } else if (customWeek && week && customAmount > 0) {
-    const d = weekBookingDates(week)
-    checkout = { name: `Your menu · ${formatWeekRange(week.week_start)}`, amount: customAmount, purchase: { kind: 'custom', weekId: week.id, amount: customAmount }, start: d.start_date, end: d.end_date }
-  }
-  const leaveCheckout = () => { setSelected(null); setParams({}) }
-  const active = plans.filter((p) => p.is_active)
-  const pending = payments.find((p) => p.status === 'pending')
+  const isExtra = !!extraWeek
+  const custom = sel?.mode === 'custom' ? sel.custom : readDraft(week.id) ?? {}
+  const weekly = pack ? pack.price : customValue(custom, dishes)
+  const meals: Meal[] = pack ? pack.meals : customMealsOf(custom)
+  const title = pack ? pack.name : 'My Menu'
+  const photo = pack ? PACK_PHOTOS[d.photoIdx % PACK_PHOTOS.length] : '/photos/served.jpg'
+  const credit = uid ? weekCredit(subs, uid, week) : 0
+  const selValue = sel?.mode === 'pack' ? packs.find((p) => p.id === sel.pack_id)?.price ?? 0 : customValue(custom, dishes)
+  const extraDue = Math.max(0, selValue - credit)
+  const disc = isExtra ? 0 : discountFor(weeks, settings)
+  const total = isExtra ? extraDue : bookingTotal(weekly, weeks, disc)
+  const gross = weekly * weeks
+  const walletUsed = Math.min(Math.max(balance, 0), total)
+  const due = total - walletUsed
+  const start = uid ? bookingStart(subs, uid, week.week_start) : week.week_start
+  const end = addDays(start, weeks * 7 - 1)
+  const spec: BookingSpec = isExtra ? { kind: 'extra', week_id: week.id } : pack ? { kind: 'pack', pack_id: pack.id, weeks } : { kind: 'custom', week_id: week.id, weeks }
 
-  if (done && checkout) {
+  if (done) {
     return (
-      <Card className="mx-auto max-w-lg p-8 text-center animate-rise">
-        <span className="mx-auto grid size-14 place-items-center rounded-full bg-leaf-50 text-leaf"><PartyPopper className="size-7" /></span>
-        <h1 className="mt-4 font-display text-2xl font-bold">Payment submitted</h1>
-        <p className="mt-2 text-muted">We&rsquo;ll match your UPI reference and activate <span className="font-semibold text-ink">{checkout.name}</span>, usually within a few hours.</p>
+      <Panel className="animate-rise mx-auto max-w-lg p-8 text-center">
+        <span className="mx-auto grid size-14 place-items-center rounded-full bg-[#34c759]/15 text-[#34c759]">{done.pending ? <Hourglass className="size-7" /> : <PartyPopper className="size-7" />}</span>
+        <h1 className="mt-4 text-[22px] font-bold">{done.pending ? 'Payment sent for checking' : 'You’re booked!'}</h1>
+        <p className="mt-2 text-sm text-white/60">{done.pending ? 'We’ll match your UPI reference and confirm, usually within a few hours.' : isExtra ? 'Paid from your wallet.' : `${title} · ${formatDate(start)} – ${formatDate(end)}`}</p>
         <div className="mt-6 flex justify-center gap-2">
-          <LinkButton to="/">Back to home</LinkButton>
-          <LinkButton to="/menu" variant="secondary">Choose my menu</LinkButton>
+          <Link to="/profile" className="bg-brand-grad inline-flex h-10 items-center rounded-full px-5 text-sm font-semibold">My pass</Link>
+          <Link to="/wallet" className="inline-flex h-10 items-center rounded-full bg-white/[0.07] px-5 text-sm font-semibold ring-1 ring-white/10">Wallet</Link>
         </div>
-      </Card>
+      </Panel>
     )
   }
 
-  if (checkout) {
-    const co = checkout
-    const upi = `upi://pay?pa=${encodeURIComponent(settings.upi_id)}&pn=${encodeURIComponent(settings.upi_name)}&am=${co.amount}&cu=INR&tn=${encodeURIComponent(`Radixo ${profile?.member_code ?? ''}`)}`
-    async function submit(e: FormEvent) {
-      e.preventDefault()
-      const clean = utr.replace(/\s/g, '')
-      if (!/^\d{12}$/.test(clean)) {
-        setErr('Enter the 12-digit UPI reference (UTR) from your payment app.')
-        return
-      }
-      setBusy(true)
-      try {
-        await submitPayment(uid!, co.purchase, clean)
-        setDone(true)
-      } catch (e2) {
-        const m = e2 instanceof Error ? e2.message : ''
-        if (m.includes('utr')) setErr('This UPI reference was already submitted. Check the number and try again.')
-        else toast(m || 'Could not submit', 'error')
-      } finally {
-        setBusy(false)
-      }
+  async function submit(e?: FormEvent) {
+    e?.preventDefault()
+    const clean = utr.replace(/\s/g, '')
+    if (due > 0 && !/^\d{12}$/.test(clean)) return setErr('Enter the 12-digit UPI reference (UTR) from your payment app.')
+    setBusy(true)
+    setErr('')
+    try {
+      const pay = await book(spec, due > 0 ? clean : '')
+      setDone({ pending: pay.status === 'pending' })
+    } catch (er) {
+      const m = er instanceof Error ? er.message : 'Could not book'
+      if (/utr/i.test(m)) setErr('This UPI reference was already used. Check the number.')
+      else if (/save your menu/i.test(m)) { toast('Save your menu first', 'error'); nav('/menu/create') }
+      else setErr(m)
+    } finally {
+      setBusy(false)
     }
-    return (
-      <div className="mx-auto max-w-2xl animate-rise">
-        <button type="button" onClick={leaveCheckout} className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink"><ArrowLeft className="size-4" /> {selected ? 'All plans' : 'Back'}</button>
-        <PageHeader title={`Pay ${formatINR(co.amount)}`} subtitle={`${co.name} · ${formatDate(co.start)} – ${formatDate(co.end)}`} />
-        <Card className="overflow-hidden">
-          <div className="grid gap-6 p-5 sm:grid-cols-[auto_1fr] sm:p-6">
-            <div className="mx-auto rounded-2xl border border-line bg-white p-3">
-              {settings.upi_id ? <QR value={upi} size={190} label={`UPI QR code to pay ${formatINR(co.amount)}`} /> : <p className="w-48 p-6 text-center text-sm text-muted">UPI ID not set up yet. Pay at the counter.</p>}
-            </div>
-            <ol className="space-y-4 text-[15px]">
-              <li className="flex gap-3">
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-sm font-bold text-white">1</span>
-                <div>
-                  <p className="font-semibold">Pay with any UPI app</p>
-                  <p className="text-sm text-muted">Scan the QR, or tap the button on your phone.</p>
-                  {settings.upi_id && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <a href={upi} className={cx('inline-flex h-9 items-center gap-1.5 rounded-lg bg-ink px-3 text-sm font-semibold text-white sm:hidden')}><Smartphone className="size-4" /> Open UPI app</a>
-                      <button
-                        type="button"
-                        onClick={() => navigator.clipboard?.writeText(settings.upi_id).then(() => toast('UPI ID copied'))}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-semibold hover:bg-sand"
-                      >
-                        <Copy className="size-4" /> {settings.upi_id}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </li>
-              <li className="flex gap-3">
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-sm font-bold text-white">2</span>
-                <div>
-                  <p className="font-semibold">Copy the UPI reference</p>
-                  <p className="text-sm text-muted">It&rsquo;s the 12-digit &ldquo;UTR&rdquo; or &ldquo;UPI Ref No.&rdquo; on the success screen.</p>
-                </div>
-              </li>
-              <li className="flex gap-3">
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-sm font-bold text-white">3</span>
-                <p className="font-semibold">Paste it below and submit</p>
-              </li>
-            </ol>
-          </div>
-          {!uid ? (
-            <div className="border-t border-line bg-cream/60 p-5 sm:p-6"><LoginFlow compact reason="Log in so we can link this payment to you." /></div>
-          ) : (
-          <form onSubmit={submit} className="flex flex-col gap-3 border-t border-line bg-cream/60 p-5 sm:flex-row sm:items-start sm:p-6">
-            <div className="flex-1">
-              <Input
-                aria-label="UPI reference number"
-                inputMode="numeric"
-                placeholder="12-digit UPI reference (UTR)"
-                value={utr}
-                onChange={(e) => { setUtr(e.target.value); setErr('') }}
-                error={err}
-                label="UPI reference"
-              />
-            </div>
-            <Button type="submit" loading={busy} className="sm:mt-7">Submit payment</Button>
-          </form>
-          )}
-        </Card>
-        <p className="mt-3 text-center text-xs text-muted">Paying cash? Pay at the counter and the manager will activate your plan.</p>
-      </div>
-    )
   }
+
+  const upi = `upi://pay?pa=${encodeURIComponent(settings.upi_id)}&pn=${encodeURIComponent(settings.upi_name)}&am=${due}&cu=INR&tn=${encodeURIComponent(`Radixo ${profile?.member_code ?? ''}`)}`
 
   return (
     <div className="animate-rise">
-      <PageHeader title="Plans" subtitle="Fixed price, GST included. Your menu choice never changes the price." />
-      {pending && (
-        <div className="mb-5 flex items-start gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber">
-          <Hourglass className="mt-0.5 size-5 shrink-0" />
-          <p><span className="font-semibold">Payment under review:</span> {formatINR(pending.amount)} · UTR {pending.utr || '—'}. You can still buy another plan; it would start after the current one.</p>
+      <Link to={isExtra ? '/menu' : pack ? `/menu/view/${pack.id}` : '/menu/create'} className="text-sm font-semibold text-white/55 hover:text-white">← Back to menu</Link>
+      <h1 className="mt-3 text-[26px] font-bold leading-tight">{isExtra ? 'Pay the extra' : 'Book your menu'}</h1>
+
+      <Panel className="mt-5 flex items-center gap-4 p-3">
+        <img src={photo} alt="" className="size-16 shrink-0 rounded-xl object-cover" />
+        <div className="min-w-0 flex-1">
+          <p className="font-script text-[26px] leading-none">{title}</p>
+          <p className="mt-1 truncate text-sm text-white/55">{meals.length ? mealsLabel(meals) : 'No dishes yet'} · {formatINR(isExtra ? selValue : weekly)} a week</p>
+        </div>
+      </Panel>
+
+      {isExtra ? (
+        <Panel className="mt-4 space-y-2 p-4 text-sm">
+          <Row label="This week’s menu" value={formatINR(selValue)} />
+          <Row label="Already in your booking" value={`− ${formatINR(credit)}`} />
+          <p className="pt-1 text-xs text-white/45">Weeks that cost less than your booking don&rsquo;t change the price.</p>
+        </Panel>
+      ) : (
+        <>
+          <p className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">How long?</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Duration">
+            {DURATIONS.map((o) => {
+              const dd = discountFor(o.weeks, settings)
+              const t = bookingTotal(weekly, o.weeks, dd)
+              const on = weeks === o.weeks
+              return (
+                <button key={o.weeks} type="button" role="radio" aria-checked={on} onClick={() => setWeeks(o.weeks)} className={cx('relative rounded-2xl p-3 text-left ring-1 transition', on ? 'bg-brand/15 ring-2 ring-brand' : 'bg-white/[0.04] ring-white/10 hover:bg-white/[0.07]')}>
+                  {dd > 0 && <span className="absolute right-2 top-2 rounded-full bg-[#34c759]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#34c759]">−{dd}%</span>}
+                  <p className="text-sm font-semibold">{o.label}</p>
+                  <p className="mt-1 text-lg font-bold tabular">{formatINR(t)}</p>
+                  <p className="text-[11px] text-white/45">{formatINR(t / o.weeks)}/week</p>
+                </button>
+              )
+            })}
+          </div>
+          <Panel className="mt-4 space-y-2 p-4 text-sm">
+            <p className="flex items-center gap-2 pb-1 text-white/70"><CalendarDays className="size-4" /> {formatDate(start, { weekday: true })} → {formatDate(end, { weekday: true, year: true })}</p>
+            <Row label={`${formatINR(weekly)} × ${weeks} week${weeks > 1 ? 's' : ''}`} value={formatINR(gross)} />
+            {disc > 0 && <Row label={`${disc}% off`} value={`− ${formatINR(gross - total)}`} accent />}
+            <p className="pt-1 text-xs text-white/45">Each new week your menu carries over. Change dishes any week before Saturday 8 pm.</p>
+          </Panel>
+        </>
+      )}
+
+      <Panel className="mt-4 overflow-hidden">
+        <div className="space-y-2 p-4 text-sm">
+          <Row label="Total" value={formatINR(total)} />
+          {walletUsed > 0 && <Row label="From your wallet" value={`− ${formatINR(walletUsed)}`} accent />}
+          <div className="flex items-baseline justify-between border-t border-white/10 pt-3">
+            <span className="font-semibold">To pay</span>
+            <span className="text-[24px] font-bold tabular">{formatINR(due)}</span>
+          </div>
+        </div>
+
+        {!uid ? (
+          <div className="border-t border-white/10 bg-black/20 p-5"><LoginFlow dark compact hideLogo reason="Log in so we can book this for you." /></div>
+        ) : total <= 0 ? (
+          <p className="border-t border-white/10 p-4 text-sm text-white/60">Nothing to pay{isExtra ? ': this week is covered by your booking.' : '.'}</p>
+        ) : due === 0 ? (
+          <div className="border-t border-white/10 p-4">
+            {err && <p className="mb-3 text-sm text-[#ff8a7a]" role="alert">{err}</p>}
+            <button type="button" onClick={() => submit()} disabled={busy} className="bg-brand-grad h-11 w-full rounded-full text-[15px] font-semibold disabled:opacity-60">{busy ? 'Booking…' : 'Confirm · paid from wallet'}</button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="border-t border-white/10 p-4">
+            <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+              <div className="rounded-2xl bg-white p-2">{settings.upi_id ? <QR value={upi} size={150} label={`UPI QR to pay ${formatINR(due)}`} /> : <p className="w-36 p-4 text-center text-xs text-ink/60">UPI not set up yet. Pay at the counter.</p>}</div>
+              <ol className="flex-1 space-y-2 text-sm text-white/75">
+                <li>1. Scan or open your UPI app and pay <b className="text-white">{formatINR(due)}</b></li>
+                <li>2. Copy the 12-digit UPI reference (UTR)</li>
+                <li>3. Paste it below</li>
+                {settings.upi_id && (
+                  <li className="flex flex-wrap gap-2 pt-1">
+                    <a href={upi} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white px-3 text-sm font-semibold text-ink sm:hidden"><Smartphone className="size-4" /> Open UPI app</a>
+                    <button type="button" onClick={() => navigator.clipboard?.writeText(settings.upi_id).then(() => toast('UPI ID copied'))} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white/[0.07] px-3 text-sm font-semibold ring-1 ring-white/10"><Copy className="size-4" /> {settings.upi_id}</button>
+                  </li>
+                )}
+              </ol>
+            </div>
+            <div className={cx('mt-4 flex h-12 items-center rounded-xl bg-white/[0.06] px-4 ring-1 focus-within:ring-2 focus-within:ring-brand', err ? 'ring-brand' : 'ring-white/12')}>
+              <input inputMode="numeric" value={utr} onChange={(e) => { setUtr(e.target.value); setErr('') }} placeholder="12-digit UPI reference" aria-label="UPI reference" className="h-full flex-1 bg-transparent text-[16px] font-semibold tracking-wide outline-none placeholder:font-normal placeholder:text-white/30 focus-visible:outline-none" />
+            </div>
+            {err && <p className="mt-2 text-sm text-[#ff8a7a]" role="alert">{err}</p>}
+            <button type="submit" disabled={busy} className="bg-brand-grad mt-3 h-11 w-full rounded-full text-[15px] font-semibold disabled:opacity-60">{busy ? 'Sending…' : `Submit payment · ${formatINR(due)}`}</button>
+          </form>
+        )}
+      </Panel>
+    </div>
+  )
+}
+
+const Row = ({ label, value, accent }: { label: string; value: string; accent?: boolean }) => (
+  <div className="flex items-baseline justify-between gap-3">
+    <span className="text-white/60">{label}</span>
+    <span className={cx('font-semibold tabular', accent && 'text-[#34c759]')}>{value}</span>
+  </div>
+)
+
+const Empty = ({ title, children }: { title: string; children?: ReactNode }) => (
+  <Panel className="p-8 text-center">
+    <p className="text-lg font-semibold">{title}</p>
+    {children && <div className="mt-1 text-sm text-white/55">{children}</div>}
+    <Link to="/menu" className="bg-brand-grad mt-5 inline-flex h-10 items-center gap-1.5 rounded-full px-5 text-sm font-semibold">See menus <ArrowRight className="size-4" /></Link>
+  </Panel>
+)
+
+// ---------- Wallet home ----------
+
+function WalletHome() {
+  const { profile } = useAuth()
+  const uid = profile?.role === 'student' && profile.full_name ? profile.id : null
+  const q = useAsync(async () => (uid ? loadMember(uid) : null), [uid])
+
+  if (!uid) {
+    return (
+      <>
+        <h1 className="text-[26px] font-bold">Wallet</h1>
+        <p className="mt-1 text-sm text-white/55">Your bookings, payments and money back for days you skip.</p>
+        <Panel className="mt-6 p-5"><LoginFlow dark compact hideLogo reason="Log in to see your wallet and bookings." /></Panel>
+        <HowItWorks />
+      </>
+    )
+  }
+  if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
+  if (!q.data) return <PageLoader />
+  const m = q.data
+  const t = today()
+  const bookings = m.subs.filter((s) => s.status === 'active').sort((a, b) => (a.start_date < b.start_date ? 1 : -1))
+  const pending = m.payments.filter((p) => p.status === 'pending')
+
+  return (
+    <>
+      <h1 className="text-[26px] font-bold">Wallet</h1>
+
+      <div className="relative mt-5 overflow-hidden rounded-[24px] bg-gradient-to-br from-[#2a1513] to-[#140d0c] p-5 ring-1 ring-white/10">
+        <span className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-[radial-gradient(circle,rgba(201,52,28,0.4),transparent_65%)]" aria-hidden />
+        <p className="flex items-center gap-2 text-sm text-white/60"><WalletIcon className="size-4" /> Balance</p>
+        <p className="mt-1 text-[38px] font-bold leading-none tabular">{formatINR(m.wallet.balance)}</p>
+        <p className="mt-2 max-w-sm text-xs text-white/50">Money back from days you marked &ldquo;not coming&rdquo;. It&rsquo;s used automatically on your next booking.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link to="/menu" className="bg-brand-grad inline-flex h-10 items-center rounded-full px-4 text-sm font-semibold">Book a menu</Link>
+          <Link to="/profile#not-coming" className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/[0.07] px-4 text-sm font-semibold ring-1 ring-white/10"><CalendarX2 className="size-4" /> Not coming?</Link>
+        </div>
+      </div>
+
+      {pending.length > 0 && (
+        <Panel className="mt-4 space-y-2 p-4">
+          {pending.map((p) => (
+            <p key={p.id} className="flex items-center gap-2 text-sm"><Hourglass className="size-4 shrink-0 text-turmeric" /> <span className="flex-1">{paymentLabel(p, m.plans)}: {formatINR(p.amount)} being checked</span></p>
+          ))}
+        </Panel>
+      )}
+
+      <h2 className="mb-3 mt-8 text-[17px] font-semibold">Your bookings</h2>
+      {bookings.length === 0 ? (
+        <Panel className="p-5 text-sm text-white/60">No bookings yet. Pick a ready-made menu or build your own, then book it for a week or longer.</Panel>
+      ) : (
+        <div className="space-y-2">
+          {bookings.map((b) => {
+            const status = b.end_date < t ? 'Ended' : b.start_date > t ? `Starts ${formatDate(b.start_date)}` : 'Active'
+            return (
+              <Panel key={b.id} className="flex items-center gap-3 p-3">
+                <span className={cx('grid size-10 shrink-0 place-items-center rounded-xl', status === 'Active' ? 'bg-[#34c759]/15 text-[#34c759]' : 'bg-white/[0.06] text-white/60')}>{status === 'Active' ? <Check className="size-5" /> : <CalendarDays className="size-5" />}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">{subLabel(b, m.plans)}</p>
+                  <p className="truncate text-xs text-white/50">{formatDate(b.start_date)} – {formatDate(b.end_date)} · {MEALS.filter((x) => b.meals.includes(x)).map((x) => MEAL_NAME[x]).join(', ')}</p>
+                </div>
+                <span className={cx('shrink-0 text-xs font-semibold', status === 'Active' ? 'text-[#34c759]' : 'text-white/50')}>{status}</span>
+              </Panel>
+            )
+          })}
         </div>
       )}
-      {state.kind === 'active' && (
-        <p className="mb-5 rounded-2xl bg-leaf-50 p-4 text-sm font-medium text-leaf">Your plan runs till {formatDate(state.sub.end_date, { weekday: true })}. A new plan starts the day after, so there&rsquo;s no gap.</p>
+
+      <h2 className="mb-3 mt-8 text-[17px] font-semibold">Wallet history</h2>
+      {m.wallet.txns.length === 0 ? (
+        <Panel className="p-5 text-sm text-white/60">Nothing yet.</Panel>
+      ) : (
+        <Panel className="divide-y divide-white/[0.06]">
+          {m.wallet.txns.map((x) => (
+            <div key={x.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+              <div className="min-w-0">
+                <p className="truncate">{x.note || x.kind}</p>
+                <p className="text-xs text-white/40">{formatDateTime(x.created_at)}</p>
+              </div>
+              <span className={cx('shrink-0 font-semibold tabular', x.amount >= 0 ? 'text-[#34c759]' : 'text-white/70')}>{x.amount >= 0 ? '+' : '−'} {formatINR(Math.abs(x.amount))}</span>
+            </div>
+          ))}
+        </Panel>
       )}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {active.map((p) => {
-          const meals = p.duration_days * Math.max(1, p.meals.length)
-          return (
-            <Card key={p.id} className={cx('flex flex-col p-5', p.badge && 'ring-2 ring-brand/20')}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-muted">{mealsLabel(p.meals)} · {p.duration_days} days</span>
-                {p.badge && <Badge tone="brand">{p.badge}</Badge>}
-              </div>
-              <p className="mt-2 font-display text-xl font-bold">{p.name}</p>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="font-display text-4xl font-extrabold tabular">{formatINR(p.price)}</span>
-                <span className="text-sm text-muted">≈ {formatINR(p.price / meals)}/meal</span>
-              </div>
-              <p className="mt-2 flex-1 text-sm text-muted">{p.description}</p>
-              <ul className="mt-4 space-y-1.5 text-sm">
-                {['Unlimited roti, rice, dal, sabzi', 'Pick your dishes every week', ...(p.duration_days >= 28 ? [`Pause for trips of ${settings.min_pause_days}+ days`] : [])].map((f) => (
-                  <li key={f} className="flex items-center gap-2"><Check className="size-4 text-leaf" strokeWidth={3} /> {f}</li>
-                ))}
-              </ul>
-              <Button className="mt-5" variant={p.badge ? 'primary' : 'secondary'} onClick={() => { setSelected(p); setUtr(''); setErr('') }}>Choose {p.duration_days === 7 ? 'trial' : 'plan'}</Button>
-            </Card>
-          )
-        })}
-      </div>
+      <HowItWorks />
+    </>
+  )
+}
+
+function HowItWorks() {
+  return (
+    <div className="mt-10 grid gap-3 sm:grid-cols-3">
+      {[
+        ['Pick your menu', 'Ready-made or your own. Eat 4 days a week or 7, your call.'],
+        ['Book it', '1 week, 1 month (5% off), 3 months (8% off) or 6 months (12% off).'],
+        ['Going home?', 'Mark the days 24 hours ahead and their value comes back to your wallet.'],
+      ].map(([h, b], i) => (
+        <Panel key={h} className="p-4">
+          <p className="text-xs font-semibold text-turmeric">0{i + 1}</p>
+          <p className="mt-1 font-semibold">{h}</p>
+          <p className="mt-1 text-sm text-white/55">{b}</p>
+        </Panel>
+      ))}
     </div>
   )
 }

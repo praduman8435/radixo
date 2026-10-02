@@ -1,31 +1,26 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Plus, Pencil } from 'lucide-react'
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
-import { loadPlans, loadSettings } from '../../lib/data'
-import { formatINR, mealsLabel } from '../../lib/logic'
-import type { Plan, Settings } from '../../lib/types'
-import { MealToggles } from '../../components/MealToggles'
-import { Badge, Button, Card, ErrorNote, Input, Modal, PageHeader, PageLoader } from '../../components/ui'
+import { loadSettings } from '../../lib/data'
+import { bookingTotal } from '../../lib/booking'
+import { formatINR } from '../../lib/logic'
+import type { Settings } from '../../lib/types'
+import { Button, Card, ErrorNote, Input, PageHeader, PageLoader } from '../../components/ui'
 import { useToast } from '../../components/toast'
 
-const NEW_PLAN: Omit<Plan, 'id'> = { name: '', description: '', price: 0, duration_days: 30, meals: ['lunch', 'dinner'], badge: '', is_active: true, position: 99 }
+const pct = (v: string) => Math.min(50, Math.max(0, Math.round(Number(v) || 0)))
 
 export default function SettingsPage() {
   const toast = useToast()
-  const q = useAsync(async () => ({ settings: await loadSettings(), plans: await loadPlans(false) }), [])
+  const q = useAsync(() => loadSettings(), [])
   const [s, setS] = useState<Settings | null>(null)
   const [saving, setSaving] = useState(false)
-  const [plan, setPlan] = useState<(Omit<Plan, 'id'> & { id?: string }) | null>(null)
-  const [planErr, setPlanErr] = useState('')
-  const [planBusy, setPlanBusy] = useState(false)
 
   useEffect(() => {
-    if (q.data) setS(q.data.settings)
+    if (q.data) setS(q.data)
   }, [q.data])
 
   if ((q.loading && !q.data) || !s) return q.error ? <ErrorNote message={q.error} onRetry={q.reload} /> : <PageLoader />
-  const plans = q.data!.plans
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS({ ...s, [k]: v })
 
   async function save(e: FormEvent) {
@@ -42,94 +37,52 @@ export default function SettingsPage() {
     }
   }
 
-  async function savePlan() {
-    if (!plan) return
-    if (plan.name.trim().length < 3) return setPlanErr('Give the plan a name.')
-    if (!(plan.price > 0) || !(plan.duration_days > 0)) return setPlanErr('Price and days must be more than 0.')
-    if (plan.meals.length === 0) return setPlanErr('Pick at least one meal.')
-    setPlanBusy(true)
-    try {
-      const { id, ...row } = plan
-      if (id) await api.update('plans', id, row)
-      else await api.insert('plans', { ...row, position: plans.length })
-      toast(id ? 'Plan updated' : 'Plan added')
-      setPlan(null)
-      q.reload()
-    } catch (er) {
-      toast(er instanceof Error ? er.message : 'Could not save', 'error')
-    } finally {
-      setPlanBusy(false)
-    }
-  }
-
   return (
-    <div className="animate-rise">
-      <PageHeader title="Settings" />
+    <form onSubmit={save} className="animate-rise">
+      <PageHeader title="Settings" actions={<Button type="submit" loading={saving}>Save settings</Button>} />
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card className="p-5">
-          <form onSubmit={save} className="space-y-4">
-            <h2 className="font-display text-lg font-bold">Payments &amp; contact</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input label="UPI ID" value={s.upi_id} onChange={(e) => set('upi_id', e.target.value.trim())} placeholder="radixo@okaxis" hint="Students pay to this ID." />
-              <Input label="Name on UPI" value={s.upi_name} onChange={(e) => set('upi_name', e.target.value)} />
-            </div>
-            <Input label="WhatsApp number" value={s.whatsapp} onChange={(e) => set('whatsapp', e.target.value)} placeholder="919800000000" hint="With country code, digits only." />
-            <Input label="Address" value={s.address} onChange={(e) => set('address', e.target.value)} />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input label="Breakfast timing" value={s.breakfast_time} onChange={(e) => set('breakfast_time', e.target.value)} />
-              <Input label="Lunch timing" value={s.lunch_time} onChange={(e) => set('lunch_time', e.target.value)} />
-              <Input label="Snacks timing" value={s.snacks_time} onChange={(e) => set('snacks_time', e.target.value)} />
-              <Input label="Dinner timing" value={s.dinner_time} onChange={(e) => set('dinner_time', e.target.value)} />
-            </div>
+        <Card className="space-y-4 p-5">
+          <h2 className="font-display text-lg font-bold">Payments &amp; contact</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="UPI ID" value={s.upi_id} onChange={(e) => set('upi_id', e.target.value.trim())} placeholder="radixo@okaxis" hint="Students pay to this ID." />
+            <Input label="Name on UPI" value={s.upi_name} onChange={(e) => set('upi_name', e.target.value)} />
+          </div>
+          <Input label="WhatsApp number" value={s.whatsapp} onChange={(e) => set('whatsapp', e.target.value)} placeholder="919800000000" hint="With country code, digits only." />
+          <Input label="Address" value={s.address} onChange={(e) => set('address', e.target.value)} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Breakfast timing" value={s.breakfast_time} onChange={(e) => set('breakfast_time', e.target.value)} />
+            <Input label="Lunch timing" value={s.lunch_time} onChange={(e) => set('lunch_time', e.target.value)} />
+            <Input label="Snacks timing" value={s.snacks_time} onChange={(e) => set('snacks_time', e.target.value)} />
+            <Input label="Dinner timing" value={s.dinner_time} onChange={(e) => set('dinner_time', e.target.value)} />
+          </div>
+        </Card>
 
-            <h2 className="pt-2 font-display text-lg font-bold">Kitchen maths</h2>
-            <div className="grid gap-4 sm:grid-cols-3">
+        <div className="space-y-5">
+          <Card className="space-y-4 p-5">
+            <div>
+              <h2 className="font-display text-lg font-bold">Booking discounts</h2>
+              <p className="mt-1 text-sm text-muted">Students book any menu for 1 week, 1 month, 3 months or 6 months. Longer bookings get this much off.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Input label="1 month %" type="number" min={0} max={50} value={s.discount_1m} onChange={(e) => set('discount_1m', pct(e.target.value))} />
+              <Input label="3 months %" type="number" min={0} max={50} value={s.discount_3m} onChange={(e) => set('discount_3m', pct(e.target.value))} />
+              <Input label="6 months %" type="number" min={0} max={50} value={s.discount_6m} onChange={(e) => set('discount_6m', pct(e.target.value))} />
+            </div>
+            <p className="rounded-xl bg-sand px-3 py-2 text-xs text-muted">
+              A ₹999/week menu: {formatINR(999)} · 1 month {formatINR(bookingTotal(999, 4, s.discount_1m))} · 3 months {formatINR(bookingTotal(999, 13, s.discount_3m))} · 6 months {formatINR(bookingTotal(999, 26, s.discount_6m))}
+            </p>
+            <Input label="“Not coming” notice (hours)" type="number" min={0} max={96} value={s.skip_notice_hours} onChange={(e) => set('skip_notice_hours', Math.min(96, Math.max(0, Math.round(Number(e.target.value) || 0))))} hint="Counted back from midnight of the first day away. The value of those meals goes to the student’s wallet." />
+          </Card>
+
+          <Card className="space-y-4 p-5">
+            <h2 className="font-display text-lg font-bold">Kitchen maths</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
               <Input label="Default attendance %" type="number" min={10} max={100} value={Math.round(s.attendance_factor * 100)} onChange={(e) => set('attendance_factor', Math.min(100, Math.max(10, Number(e.target.value))) / 100)} hint="Used until 4 weeks of data exist." />
               <Input label="Extra cooked %" type="number" min={0} max={50} value={s.buffer_pct} onChange={(e) => set('buffer_pct', Math.max(0, Number(e.target.value)))} hint="Safety buffer." />
-              <Input label="Min pause days" type="number" min={1} max={30} value={s.min_pause_days} onChange={(e) => set('min_pause_days', Math.max(1, Number(e.target.value)))} />
             </div>
-            <Button type="submit" loading={saving}>Save settings</Button>
-          </form>
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-bold">Plans</h2>
-            <Button size="sm" onClick={() => { setPlan({ ...NEW_PLAN }); setPlanErr('') }}><Plus className="size-4" /> Add plan</Button>
-          </div>
-          <ul className="mt-3 divide-y divide-line">
-            {plans.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold">{p.name} {p.badge && <Badge tone="brand" className="ml-1">{p.badge}</Badge>} {!p.is_active && <Badge tone="red" className="ml-1">Hidden</Badge>}</p>
-                  <p className="text-sm text-muted">{formatINR(p.price)} · {p.duration_days} days · {mealsLabel(p.meals)}</p>
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => { setPlan({ ...p }); setPlanErr('') }} aria-label={`Edit ${p.name}`}><Pencil className="size-4" /></Button>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-muted">Hide a plan instead of deleting it; past payments still point to it.</p>
-        </Card>
+          </Card>
+        </div>
       </div>
-
-      <Modal open={!!plan} onClose={() => setPlan(null)} title={plan?.id ? 'Edit plan' : 'Add plan'} footer={<><Button variant="ghost" onClick={() => setPlan(null)}>Cancel</Button><Button onClick={savePlan} loading={planBusy}>Save</Button></>}>
-        {plan && (
-          <div className="space-y-4">
-            <Input label="Name" value={plan.name} onChange={(e) => { setPlan({ ...plan, name: e.target.value }); setPlanErr('') }} error={planErr} />
-            <Input label="Description" value={plan.description} onChange={(e) => setPlan({ ...plan, description: e.target.value })} />
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Price (₹, incl. GST)" type="number" min={1} value={plan.price || ''} onChange={(e) => setPlan({ ...plan, price: Number(e.target.value) })} />
-              <Input label="Days" type="number" min={1} value={plan.duration_days} onChange={(e) => setPlan({ ...plan, duration_days: Number(e.target.value) })} />
-            </div>
-            <MealToggles value={plan.meals} onChange={(meals) => setPlan({ ...plan, meals })} />
-            <Input label="Badge (optional)" value={plan.badge} onChange={(e) => setPlan({ ...plan, badge: e.target.value })} placeholder="e.g. Best value" />
-            <label className="flex items-center gap-3 text-sm font-medium">
-              <input type="checkbox" className="size-4 accent-brand" checked={plan.is_active} onChange={(e) => setPlan({ ...plan, is_active: e.target.checked })} />
-              Show this plan to students
-            </label>
-          </div>
-        )}
-      </Modal>
-    </div>
+    </form>
   )
 }

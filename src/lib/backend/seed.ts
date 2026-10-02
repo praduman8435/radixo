@@ -1,9 +1,10 @@
 // Demo data for the in-browser store. Everything is dated relative to today so the demo always looks live.
-import { addDays, defaultDeadline, mondayOf, today } from '../dates'
+import { addDays, defaultDeadline, diffDays, mondayOf, today } from '../dates'
 import { phoneEmail } from '../phone'
+import { MEALS } from '../types'
 import type {
-  Attendance, Dish, DishCategory, Feedback, Meal, MenuItem, Pack, Payment, Pause, Plan, Profile,
-  Selection, Settings, Subscription, TableName, Tables, Wastage, Week,
+  Attendance, CustomMenu, Dish, DishCategory, Feedback, Meal, MenuItem, Pack, Payment, Pause, Profile,
+  Selection, Settings, Subscription, TableName, Tables, WalletTxn, Wastage, Week,
 } from '../types'
 
 export interface DemoUser {
@@ -194,19 +195,13 @@ export function createSeed(): DemoDB {
   const cur = buildWeek(thisMonday, 0, dishByName, now)
   const next = buildWeek(addDays(thisMonday, 7), 2, dishByName, now)
 
-  const plans: Plan[] = [
-    { id: 'p-founding', name: 'Founding batch — Monthly', description: 'Lunch + dinner for 30 days. ₹300 off for the first 100 students.', price: 3300, duration_days: 30, meals: ['lunch', 'dinner'], badge: 'First 100 only', is_active: true, position: 0 },
-    { id: 'p-monthly', name: 'Monthly — Lunch + Dinner', description: '60 meals over 30 days. Unlimited roti, rice, dal and sabzi.', price: 3600, duration_days: 30, meals: ['lunch', 'dinner'], badge: 'Best value', is_active: true, position: 1 },
-    { id: 'p-dinner', name: 'Monthly — Dinner only', description: '30 dinners. For students who eat lunch on campus.', price: 2000, duration_days: 30, meals: ['dinner'], badge: '', is_active: true, position: 2 },
-    { id: 'p-trial', name: 'Trial week', description: '14 meals over 7 days. Try before you commit.', price: 999, duration_days: 7, meals: ['lunch', 'dinner'], badge: '', is_active: true, position: 3 },
-  ]
 
   const users: DemoUser[] = []
   const profiles: Profile[] = []
   const mk = (id: string, email: string, full_name: string, role: Profile['role'], extra: Partial<Profile>, n: number) => {
     users.push({ id, email, password: DEMO_PASSWORD })
     profiles.push({
-      id, email, full_name, role, phone: '', college: 'KIET Group of Institutions', year: '', stay_type: '', area: '',
+      id, email, full_name, role, phone: '', college: '', year: '', stay_type: '', area: '',
       member_code: `RDX${String(n).padStart(4, '0')}`, created_at: addDays(t, -40) + 'T10:00:00.000Z', ...extra,
     })
   }
@@ -217,68 +212,88 @@ export function createSeed(): DemoDB {
     mk(id, phoneEmail(phone), name, 'student', { phone, year, stay_type: stay, area }, i + 3)
   })
 
+  // Bookings: each student booked a ready-made menu or their own for 1 week to 6 months, starting on a Monday.
   const subscriptions: Subscription[] = []
   const payments: Payment[] = []
-  const pay = (user_id: string, what: { plan?: Plan; pack?: Pack }, created: string, status: Payment['status']) => {
-    const p: Payment = {
-      id: `pay-${user_id}-${created}`, user_id, plan_id: what.plan?.id ?? null, pack_id: what.pack?.id ?? null, week_id: what.pack?.week_id ?? null,
-      amount: what.plan?.price ?? what.pack?.price ?? 0, method: 'upi',
-      utr: String(Math.floor(1e11 + rand() * 9e11)), status, admin_note: '',
-      created_at: created + 'T09:30:00.000Z', reviewed_at: status === 'pending' ? null : created + 'T12:00:00.000Z',
-    }
-    payments.push(p)
-    return p
-  }
-  const sub = (user_id: string, plan: Plan, start: string) => {
-    const p = pay(user_id, { plan }, addDays(start, -1), 'approved')
-    subscriptions.push({
-      id: `sub-${user_id}-${start}`, user_id, plan_id: plan.id, pack_id: null, payment_id: p.id, start_date: start,
-      end_date: addDays(start, plan.duration_days - 1), meals: plan.meals, status: 'active', created_at: p.created_at,
-    })
-  }
-  const [founding, monthly, dinnerOnly, trial] = plans
-  const startOffsets = [-12, -20, -8, -27, -3, -15, -25, -5, -18, -10, -1]
-  startOffsets.forEach((off, i) => {
-    const plan = i === 8 ? dinnerOnly : i % 3 === 0 ? founding : monthly
-    sub(i === 0 ? 'u-student' : `u-s${i}`, plan, addDays(t, off))
-  })
-  sub('u-s14', monthly, addDays(t, -38)) // Dev: expired 9 days ago — shows up in renewals
-  pay('u-s11', { plan: trial }, t, 'pending') // Tanya
-  pay('u-s12', { plan: monthly }, addDays(t, -1), 'pending') // Harsh
-  // Simran booked this week's Full Day menu on its own (breakfast + snacks show up in the kitchen)
-  const fullDay = cur.packs[1]
-  const simranPay = pay('u-s13', { pack: fullDay }, addDays(thisMonday, -2), 'approved')
-  subscriptions.push({
-    id: 'sub-u-s13-pack', user_id: 'u-s13', plan_id: null, pack_id: fullDay.id, payment_id: simranPay.id, start_date: thisMonday,
-    end_date: addDays(thisMonday, 6), meals: fullDay.meals, status: 'active', created_at: simranPay.created_at,
-  })
-  pay('u-s14', { pack: next.packs[0] }, t, 'pending') // Dev wants to come back for one week of Budget
-
-  const pauses: Pause[] = [{
-    id: 'pause-1', user_id: 'u-s2', subscription_id: subscriptions[2].id, start_date: addDays(t, 3), end_date: addDays(t, 7),
-    reason: 'Going home for a family function', status: 'requested', created_at: now,
-  }]
-
-  // Current-week menus for most members: ready-made ones, or custom ones built from each meal's options.
+  const wallet_txns: WalletTxn[] = []
   const selections: Selection[] = []
   const customFor = (items: MenuItem[], meals: Meal[]) => {
     const custom: Record<string, string[]> = {}
     for (let day = 0; day < 7; day++) {
       for (const meal of meals) {
+        if (meal === 'lunch' && day % 3 === 2 && meals.length > 1) continue // skips a few lunches, like real students do
         const lines = items.filter((it) => it.day === day && it.meal === meal)
         if (lines.length) custom[`${day}-${meal}`] = lines.map((it) => it.dish_ids[Math.floor(rand() * it.dish_ids.length)])
       }
     }
     return custom
   }
-  const packSel = (uid: string, wk: typeof cur, pk: Pack): Selection => ({ id: `sel-${uid}-${wk.week.id}`, user_id: uid, week_id: wk.week.id, mode: 'pack', pack_id: pk.id, picks: { ...pk.picks }, custom: {}, updated_at: now })
-  subscriptions.slice(1, 11).forEach((s, i) => {
-    if (rand() < 0.65) selections.push(packSel(s.user_id, cur, cur.packs[[0, 2, 3][i % 3]]))
-    else selections.push({ id: `sel-${s.user_id}-${cur.week.id}`, user_id: s.user_id, week_id: cur.week.id, mode: 'custom', pack_id: null, picks: {}, custom: customFor(cur.items, s.meals), updated_at: now })
+  const dishMap = new Map(dishes.map((d) => [d.id, d]))
+  const value = (custom: CustomMenu) => Object.values(custom).flat().reduce((n, id) => n + (dishMap.get(id)?.price ?? 0), 0)
+  const disc = (weeks: number) => (weeks >= 26 ? 12 : weeks >= 13 ? 8 : weeks >= 4 ? 5 : 0)
+  const label = (name: string, weeks: number) => `${name} · ${({ 1: '1 week', 4: '1 month', 13: '3 months', 26: '6 months' } as Record<number, string>)[weeks]}`
+
+  type Spec = { uid: string; start: string; weeks: number; pack?: Pack; custom?: CustomMenu; status?: Payment['status'] }
+  const book = ({ uid, start, weeks, pack, custom, status = 'approved' }: Spec) => {
+    const weekly = pack ? pack.price : value(custom!)
+    const total = Math.round((weekly * weeks * (100 - disc(weeks))) / 100)
+    const created = status === 'pending' ? addDays(t, -(payments.length % 2)) : addDays(start, -2)
+    const details = {
+      kind: pack ? 'pack' : 'custom', source: pack ? 'pack' : 'custom', pack_id: pack?.id ?? null, pack_name: pack?.name ?? 'My Menu', template: custom ?? {},
+      meals: pack ? pack.meals : MEALS.filter((m) => Object.entries(custom!).some(([k, v]) => k.endsWith('-' + m) && v.length)), weeks, weekly_price: weekly, discount_pct: disc(weeks),
+      start_date: start, end_date: addDays(start, weeks * 7 - 1), total, label: label(pack?.name ?? 'My Menu', weeks),
+    } as const
+    const p: Payment = {
+      id: `pay-${uid}-${start}`, user_id: uid, plan_id: null, pack_id: pack?.id ?? null, week_id: pack?.week_id ?? cur.week.id, amount: total, wallet_used: 0, method: 'upi',
+      utr: String(Math.floor(1e11 + rand() * 9e11)), status, admin_note: '', details: { ...details },
+      created_at: created + 'T09:30:00.000Z', reviewed_at: status === 'pending' ? null : created + 'T12:00:00.000Z',
+    }
+    payments.push(p)
+    if (status !== 'approved') return p
+    subscriptions.push({
+      id: `sub-${uid}-${start}`, user_id: uid, plan_id: null, pack_id: details.pack_id, payment_id: p.id, start_date: start, end_date: details.end_date,
+      meals: [...details.meals], status: 'active', source: details.source, pack_name: details.pack_name, template: details.template, weeks, weekly_price: weekly,
+      discount_pct: details.discount_pct, created_at: p.created_at,
+    })
+    return p
+  }
+
+  const plan: [weeksAgo: number, weeks: number, packIdx: number | null][] = [
+    [1, 4, 2], [2, 13, 0], [0, 4, 3], [3, 26, 1], [0, 1, null], [2, 4, 0], [3, 13, null], [0, 4, 2], [2, 4, 3], [1, 13, 0], [0, 4, null],
+  ]
+  plan.forEach(([ago, weeks, pk], i) => {
+    const uid = i === 0 ? 'u-student' : `u-s${i}`
+    const start = addDays(thisMonday, -7 * ago)
+    if (pk === null) {
+      const custom = customFor(cur.items, i === 4 ? ['dinner'] : ['lunch', 'dinner'])
+      book({ uid, start, weeks, custom })
+      selections.push({ id: `sel-${uid}-${cur.week.id}`, user_id: uid, week_id: cur.week.id, mode: 'custom', pack_id: null, picks: {}, custom, updated_at: now })
+    } else {
+      book({ uid, start, weeks, pack: cur.packs[pk] })
+    }
   })
-  selections.push(packSel('u-student', cur, cur.packs[2]))
-  selections.push(packSel('u-s13', cur, fullDay))
-  for (const uid of ['u-s1', 'u-s4', 'u-s7']) selections.push(packSel(uid, next, next.packs[uid === 'u-s4' ? 3 : 0]))
+  // Simran: a Full Day menu, this week only
+  book({ uid: 'u-s13', start: thisMonday, weeks: 1, pack: cur.packs[1] })
+  // Dev: a month that ended last week (shows up in renewals) and is now asking for one week of Budget
+  book({ uid: 'u-s14', start: addDays(thisMonday, -35), weeks: 4, pack: cur.packs[0] })
+  book({ uid: 'u-s14', start: addDays(thisMonday, 7), weeks: 1, pack: next.packs[0], status: 'pending' })
+  book({ uid: 'u-s11', start: addDays(thisMonday, 7), weeks: 4, pack: next.packs[2], status: 'pending' }) // Tanya
+  book({ uid: 'u-s12', start: addDays(thisMonday, 7), weeks: 13, pack: next.packs[3], status: 'pending' }) // Harsh
+  // A few members already picked dishes for next week
+  for (const uid of ['u-s1', 'u-s4']) selections.push({ id: `sel-${uid}-${next.week.id}`, user_id: uid, week_id: next.week.id, mode: 'pack', pack_id: next.packs[2].id, picks: { ...next.packs[2].picks }, custom: {}, updated_at: now })
+
+  // "Not coming" days: credited to the wallet when marked.
+  const skip = (id: string, uid: string, start: string, end: string, reason: string): Pause => {
+    const b = subscriptions.find((x) => x.user_id === uid && x.start_date <= start && x.end_date >= end)!
+    const net = (b.weekly_price * (100 - b.discount_pct)) / 100
+    const credit = Math.round((net / 7) * (diffDays(start, end) + 1))
+    wallet_txns.push({ id: `wt-${id}`, user_id: uid, amount: credit, kind: 'skip', note: `Not coming ${start.slice(8)}–${end.slice(8)}`, ref_id: id, created_at: addDays(start, -2) + 'T18:00:00.000Z' })
+    return { id, user_id: uid, subscription_id: b.id, credit, start_date: start, end_date: end, reason, status: 'approved', created_at: addDays(start, -2) + 'T18:00:00.000Z' }
+  }
+  const pauses: Pause[] = [
+    skip('pause-1', 'u-s2', addDays(t, 3), addDays(t, 7), 'Going home for a family function'),
+    skip('pause-2', 'u-student', addDays(thisMonday, -6), addDays(thisMonday, -5), 'College trip'),
+  ]
 
   // Two weeks of attendance for members active on each day; breakfast and snacks are skipped more often.
   const attendance: Attendance[] = []
@@ -320,16 +335,17 @@ export function createSeed(): DemoDB {
   const settings: Settings[] = [{
     id: 1, upi_id: 'radixo.demo@upi', upi_name: 'Radixo Mess', whatsapp: '', address: '',
     breakfast_time: '7:30 – 9:30 AM', lunch_time: '12:00 – 3:00 PM', snacks_time: '5:00 – 6:00 PM', dinner_time: '7:30 – 10:30 PM', attendance_factor: 0.8, buffer_pct: 10, min_pause_days: 4,
+    discount_1m: 5, discount_3m: 8, discount_6m: 12, skip_notice_hours: 24,
   }]
 
   return {
-    version: 3,
+    version: 5,
     users,
     session: null,
     memberSeq: STUDENTS.length + 3,
     tables: {
       profiles, dishes, weeks: [cur.week, next.week], menu_items: [...cur.items, ...next.items], packs: [...cur.packs, ...next.packs],
-      selections, plans, payments, subscriptions, pauses, attendance, feedback, wastage, settings,
+      selections, plans: [], payments, subscriptions, pauses, wallet_txns, attendance, feedback, wastage, settings,
     },
   }
 }

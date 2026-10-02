@@ -4,7 +4,7 @@ import { Plus, Check, Clock3, Eye, Lock, RotateCcw, X } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { savePicks } from '../../../lib/data'
 import { formatDateTime, formatWeekRange, mondayOf, timeUntil, today, weekdayIndex } from '../../../lib/dates'
-import { MEAL_NAME, customCharge, customCount, customMeals, customTotal, dishesFor, formatINR, isLocked, mealsLabel, weekPlanMeals } from '../../../lib/logic'
+import { MEAL_NAME, customCount, customMeals, customTotal, dishesFor, formatINR, isLocked, mealsLabel } from '../../../lib/logic'
 import { MEALS, type Dish, type Meal, type MenuItem, type Pack, type Selection } from '../../../lib/types'
 import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { useToast } from '../../../components/toast'
@@ -54,8 +54,8 @@ export default function MenuHome() {
   const data = q.data
   const week = data?.week
   const locked = week ? isLocked(week) : true
-  const planMeals = week && data?.member && uid ? weekPlanMeals(data.member.subs, uid, week) : []
-  const covered = planMeals.length > 0
+  const credit = data?.credit ?? 0
+  const booked = credit > 0 // this week is already paid for by a booking
   const thisWeek = !!week && week.week_start === mondayOf(today())
   const previewDay = thisWeek ? weekdayIndex(today()) : 0
 
@@ -64,7 +64,8 @@ export default function MenuHome() {
     const custom = data.selection?.mode === 'custom' ? data.selection.custom : readDraft(week.id)
     if (custom && customCount(custom) > 0) {
       const sel: Selection = { id: '', user_id: uid ?? '', week_id: week.id, mode: 'custom', pack_id: null, picks: {}, custom, updated_at: '' }
-      cards.push({ kind: 'mine', key: 'mine', title: 'My Menu', photo: '/photos/served.jpg', price: customTotal(custom, data.dishes), meals: customMeals(custom), sel, due: customCharge(custom, data.dishes, planMeals) })
+      const total = customTotal(custom, data.dishes)
+      cards.push({ kind: 'mine', key: 'mine', title: 'My Menu', photo: '/photos/served.jpg', price: total, meals: customMeals(custom), sel, due: booked ? Math.max(0, total - credit) : total })
     }
     data.packs.filter((p) => p.price > 0).forEach((p, i) =>
       cards.push({ kind: 'pack', key: p.id, title: p.name, photo: PACK_PHOTOS[i % PACK_PHOTOS.length], price: p.price, meals: p.meals, pack: p, sel: { id: '', user_id: '', week_id: week.id, mode: 'pack', pack_id: p.id, picks: p.picks, custom: {}, updated_at: '' } }),
@@ -80,15 +81,21 @@ export default function MenuHome() {
   const accept = useCallback(async (c: Card) => {
     if (!week) return
     if (c.kind === 'create') return nav('/menu/create')
-    if (c.kind === 'mine') return c.due > 0 && !locked ? nav(`/wallet?custom=${week.id}`) : nav('/menu/view/mine')
+    if (c.kind === 'mine') {
+      if (locked) return nav('/menu/view/mine')
+      if (!data?.saved || data.saved.mode !== 'custom') return nav('/menu/create') // still a draft: save it first
+      if (!booked) return nav(`/wallet?custom=${week.id}`)
+      return c.due > 0 ? nav(`/wallet?extra=${week.id}`) : nav('/menu/view/mine')
+    }
     if (locked) return nav(`/menu/view/${c.pack.id}`)
-    const free = covered && c.meals.every((m) => planMeals.includes(m))
-    if (!free) return nav(`/wallet?pack=${c.pack.id}`)
+    if (!booked) return nav(`/wallet?pack=${c.pack.id}`)
+    // Already booked this week: switch menus; pay only if this one costs more.
     const save = async () => {
       setBusy(true)
       try {
         await savePicks(uid!, week.id, 'pack', c.pack.id, c.pack.picks)
-        toast(`${c.title} is your menu for ${formatWeekRange(week.week_start)}`)
+        if (c.pack.price > credit) nav(`/wallet?extra=${week.id}`)
+        else toast(`${c.title} is your menu for ${formatWeekRange(week.week_start)}`)
         q.reload()
       } catch (e) {
         toast(e instanceof Error ? e.message : 'Could not save', 'error')
@@ -98,7 +105,7 @@ export default function MenuHome() {
     }
     if (!uid) requireLogin('Log in to choose this menu.', () => void save())
     else await save()
-  }, [week, locked, covered, planMeals, uid, nav, toast, q, requireLogin])
+  }, [week, locked, booked, credit, data, uid, nav, toast, q, requireLogin])
 
   /** Animate the top card off screen, then move to the next (and act on a right swipe). */
   const swipe = useCallback((dir: 1 | -1) => {
@@ -147,10 +154,10 @@ export default function MenuHome() {
 
   const acceptLabel = (c: Card) => {
     if (c.kind === 'create') return 'Build'
-    if (c.kind === 'mine') return c.due > 0 && !locked ? `Pay ${formatINR(c.due)}` : 'View'
+    if (c.kind === 'mine') return locked ? 'View' : !booked ? 'Book' : c.due > 0 ? `Pay ${formatINR(c.due)}` : 'View'
     if (locked) return 'View'
     if (isMine(c)) return 'Selected'
-    return covered && c.meals.every((m) => planMeals.includes(m)) ? 'Choose' : 'Book'
+    return booked ? (c.pack.price > credit ? `Switch · +${formatINR(c.pack.price - credit)}` : 'Choose') : 'Book'
   }
 
   const dx = fly ? fly * 640 : drag.x
@@ -172,7 +179,7 @@ export default function MenuHome() {
             <Link to="/menu/create" className="bg-brand-grad inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)]">
               {data.selection?.mode === 'custom' ? 'Edit my menu' : 'Build your own'}
             </Link>
-            {covered && <span className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/[0.06] px-4 text-sm text-white/75 ring-1 ring-white/10">Your plan covers {mealsLabel(planMeals).toLowerCase()}</span>}
+            {booked && <span className="inline-flex h-10 items-center rounded-full bg-white/[0.06] px-4 text-sm text-white/75 ring-1 ring-white/10">This week is booked · switch menus freely</span>}
           </div>
         </div>
       </section>
@@ -258,8 +265,8 @@ export default function MenuHome() {
                             <Preview items={data.items} sel={c.sel} meals={c.meals} dishes={data.dishes} day={previewDay} />
                           </div>
                           <div className="mt-auto flex items-center justify-between border-t border-white/10 pt-3 text-xs">
-                            {(c.kind === 'pack' && isMine(c)) || (c.kind === 'mine' && covered && c.due === 0) ? (
-                              <span className="flex items-center gap-1.5 font-semibold text-[#34c759]"><Check className="size-4" /> {c.kind === 'mine' ? 'Included in your plan' : 'Your menu this week'}</span>
+                            {(c.kind === 'pack' && isMine(c)) || (c.kind === 'mine' && booked && c.due === 0) ? (
+                              <span className="flex items-center gap-1.5 font-semibold text-[#34c759]"><Check className="size-4" /> {c.kind === 'mine' ? 'Included in your booking' : 'Your menu this week'}</span>
                             ) : (
                               <span className="text-white/45">7 days · {mealsLabel(c.meals).toLowerCase()}</span>
                             )}

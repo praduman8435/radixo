@@ -9,6 +9,8 @@ export interface Query<T> {
   limit?: number
 }
 
+export type RpcName = 'book' | 'mark_skip' | 'cancel_skip' | 'approve_payment' | 'reject_payment'
+
 export interface AuthUser {
   id: string
   email: string
@@ -34,6 +36,8 @@ export interface Backend {
    */
   phoneLogin(phone: string, code: string | null): Promise<{ user: AuthUser; isNew: boolean }>
   signOut(): Promise<void>
+  /** Call a server function (book, mark_skip, cancel_skip, approve_payment, reject_payment). */
+  rpc<T = unknown>(fn: RpcName, args: Record<string, unknown>): Promise<T>
 
   list<K extends TableName>(table: K, q?: Query<Tables[K]>): Promise<Tables[K][]>
   get<K extends TableName>(table: K, id: string | number): Promise<Tables[K] | null>

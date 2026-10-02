@@ -143,7 +143,7 @@ export function LoginFlow({ reason, onDone, compact, dark, hideLogo }: { reason?
           </div>
           {err && <p className={cx('mt-2 text-sm font-medium', T.err)} role="alert">{err}</p>}
           <Button type="submit" loading={busy} className={primary}>Get code</Button>
-          <p className={cx('mt-3 text-center text-xs', T.note)}>We&rsquo;ll only message you about your meals and plan.</p>
+          <p className={cx('mt-3 text-center text-xs', T.note)}>We&rsquo;ll only message you about your meals and bookings.</p>
         </form>
       )}
 
@@ -247,7 +247,7 @@ export function LoginGateProvider({ children }: { children: ReactNode }) {
       {open && createPortal(
         <div className="fixed inset-0 z-[90] flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label="Log in">
           <button type="button" className="absolute inset-0 bg-black/60 backdrop-blur-[3px]" onClick={() => setOpen(null)} aria-label="Close" />
-          <div className="sheet-up pb-safe relative w-full max-w-md overflow-hidden rounded-t-[28px] bg-[#141010] px-6 pb-10 pt-3 text-white shadow-pop ring-1 ring-white/10 sm:rounded-[28px]">
+          <div className="sheet-up no-scrollbar relative max-h-[92dvh] w-full max-w-md overflow-y-auto overflow-x-hidden rounded-t-[28px] bg-[#141010] px-6 pt-3 text-white shadow-pop ring-1 ring-white/10 sm:rounded-[28px]" style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom) + 1.5rem))' }}>
             <span className="bg-brand-grad absolute inset-x-0 top-0 h-[3px]" aria-hidden />
             <span className="pointer-events-none absolute -right-20 -top-20 size-56 rounded-full bg-[radial-gradient(circle,rgba(201,52,28,0.35),transparent_65%)]" aria-hidden />
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20 sm:hidden" aria-hidden />
