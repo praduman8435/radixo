@@ -165,7 +165,6 @@ function StoryCollage() {
 }
 
 const QUOTES: { text: string; by: string }[] = [
-  { text: 'When you’re far from Mom, let Radixo be near.', by: 'Ghar ki yaad, kam karte hain' },
   { text: 'Ghar ka swaad, college ke paas.', by: 'Cooked fresh, every morning' },
   { text: 'Exams are hard. Dinner shouldn’t be.', by: 'Hot food, on time, every day' },
   { text: 'Your plate, your rules, every single week.', by: 'Build your own menu' },
