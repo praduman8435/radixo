@@ -86,6 +86,9 @@ body {
 }
 .animate-rise { animation: rise 0.35s ease-out both; }
 
+@keyframes quote-progress { from { width: 0; } to { width: 100%; } }
+.quote-progress { animation-name: quote-progress; animation-timing-function: linear; animation-fill-mode: forwards; }
+
 @keyframes drawer-in { from { transform: translateX(100%); } to { transform: none; } }
 .drawer-in { animation: drawer-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 

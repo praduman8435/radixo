@@ -304,7 +304,7 @@ create policy wastage_write on wastage for all using (is_staff()) with check (is
 
 -- ---------- Starter data ----------
 
-insert into settings (id, address) values (1, 'Near KIET, Delhi–Meerut Road, Muradnagar, Ghaziabad') on conflict (id) do nothing;
+insert into settings (id) values (1) on conflict (id) do nothing;
 
 insert into plans (name, description, price, duration_days, meals, badge, position)
 select * from (values

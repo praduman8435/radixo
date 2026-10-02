@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { ArrowDown, ArrowRight, CheckCircle2, ChefHat, ChevronDown, Clock3, Hand, MapPin, QrCode, Sparkles } from 'lucide-react'
 import { useAuth } from '../../lib/auth'
@@ -164,21 +164,101 @@ function StoryCollage() {
   )
 }
 
+const QUOTES: { text: string; by: string }[] = [
+  { text: 'When you’re far from Mom, let Radixo be near.', by: 'Ghar ki yaad, kam karte hain' },
+  { text: 'Ghar ka swaad, college ke paas.', by: 'Cooked fresh, every morning' },
+  { text: 'Exams are hard. Dinner shouldn’t be.', by: 'Hot food, on time, every day' },
+  { text: 'Your plate, your rules, every single week.', by: 'Build your own menu' },
+  { text: 'Fewer Maggi nights, more real meals.', by: 'Four meals a day, if you want' },
+  { text: 'Made with care, like it’s for family.', by: 'From the Radixo kitchen' },
+]
+const QUOTE_MS = 5000
+
+/** "Specially for you": the chef sketch draws itself in; quotes rotate on their own, or swipe / tap the dots. */
 function ChefStory() {
   const [ref, inView] = useInView<HTMLElement>()
+  const [idx, setIdx] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const [tick, setTick] = useState(0) // restarts the progress bar after manual changes
+  const touchX = useRef<number | null>(null)
+
+  const go = useCallback((n: number) => {
+    setIdx(((n % QUOTES.length) + QUOTES.length) % QUOTES.length)
+    setTick((t) => t + 1)
+  }, [])
+
+  useEffect(() => {
+    if (!inView || paused) return
+    const t = window.setTimeout(() => go(idx + 1), QUOTE_MS)
+    return () => clearTimeout(t)
+  }, [idx, inView, paused, tick, go])
+
   return (
-    <section ref={ref} className={cx('relative grid grid-cols-[1.1fr_1fr] items-center gap-3 overflow-x-clip py-2 md:grid-cols-2 md:gap-12', inView && 'in-view')}>
-      <div className="relative">
+    <section ref={ref} className={cx('relative grid grid-cols-[1.1fr_1fr] items-center gap-3 overflow-x-clip py-2 pr-1 md:grid-cols-2 md:gap-12', inView && 'in-view')}>
+      <div className="relative min-w-0">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(closest-side,rgba(201,52,28,0.18),transparent)]" aria-hidden />
         <img src="/home/chef-sketch.png" alt="Radixo chef serving a plate" className="reveal-draw relative mx-auto w-full max-w-sm" />
         <svg viewBox="0 0 100 60" className="pointer-events-none absolute left-[42%] top-[50%] w-[34%] text-ink/30" aria-hidden>
           {[0, 1, 2].map((i) => <path key={i} className="steam" style={{ animationDelay: `${0.4 + i * 0.7}s` }} d={`M${25 + i * 22} 58c-7-9 7-14 0-24s7-14 0-24`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />)}
         </svg>
       </div>
-      <div className="reveal-card">
-        <div className="relative overflow-hidden rounded-2xl bg-white px-5 py-8 shadow-[0_18px_34px_-16px_rgba(31,26,23,0.4)] ring-1 ring-line/60 md:px-10 md:py-12">
+
+      <div className="reveal-card min-w-0">
+        <div
+          className="relative cursor-grab touch-pan-y select-none overflow-hidden rounded-2xl bg-white px-5 pb-6 pt-8 shadow-[0_18px_34px_-16px_rgba(31,26,23,0.4)] ring-1 ring-line/60 active:cursor-grabbing md:px-10 md:pb-8 md:pt-12"
+          onMouseEnter={() => setPaused(true)}
+          onMouseLeave={() => setPaused(false)}
+          onTouchStart={(e) => { touchX.current = e.touches[0].clientX; setPaused(true) }}
+          onTouchEnd={(e) => {
+            const start = touchX.current
+            touchX.current = null
+            setPaused(false)
+            if (start === null) return
+            const dx = e.changedTouches[0].clientX - start
+            if (Math.abs(dx) > 40) go(idx + (dx < 0 ? 1 : -1))
+          }}
+          aria-roledescription="carousel"
+          aria-label="Radixo quotes"
+        >
           <span className="bg-brand-grad absolute inset-x-0 top-0 h-1" aria-hidden />
-          <p className="text-center font-script-italic text-[21px] leading-snug text-maroon sm:text-[28px]">when you&rsquo;re far from Mom, let Radixo be near</p>
+
+          {/* All quotes share one grid cell, so the card keeps the height of the longest one. */}
+          <div className="grid" aria-live="polite">
+            {QUOTES.map((q, i) => (
+              <figure
+                key={q.text}
+                aria-hidden={i !== idx}
+                className={cx(
+                  'col-start-1 row-start-1 flex flex-col items-center justify-center text-center transition-all duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+                  i === idx ? 'translate-x-0 opacity-100 blur-0' : i === (idx - 1 + QUOTES.length) % QUOTES.length ? '-translate-x-6 opacity-0 blur-[2px]' : 'translate-x-6 opacity-0 blur-[2px]',
+                )}
+              >
+                <blockquote className="font-script-italic text-[21px] leading-snug text-maroon sm:text-[28px]">{q.text}</blockquote>
+                <figcaption className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted sm:text-xs">{q.by}</figcaption>
+              </figure>
+            ))}
+          </div>
+
+          <div className="mt-6 flex items-center justify-center gap-1.5">
+            {QUOTES.map((q, i) => (
+              <button
+                key={q.text}
+                type="button"
+                onClick={() => go(i)}
+                aria-label={`Quote ${i + 1}`}
+                aria-current={i === idx}
+                className={cx('relative h-1.5 overflow-hidden rounded-full transition-all duration-500', i === idx ? 'w-7 bg-line' : 'w-1.5 bg-line hover:bg-muted/50')}
+              >
+                {i === idx && (
+                  <span
+                    key={`${idx}-${tick}`}
+                    className="quote-progress absolute inset-y-0 left-0 rounded-full bg-brand"
+                    style={{ animationDuration: `${QUOTE_MS}ms`, animationPlayState: paused || !inView ? 'paused' : 'running' }}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="mt-3 hidden animate-bounce justify-end pr-3 text-ink [animation-duration:2.2s] sm:flex" aria-hidden>
           <ArrowDown className="size-4" strokeWidth={2.5} />
@@ -399,7 +479,7 @@ export default function Home() {
       {/* Timings + FAQ */}
       <Container className="mb-20 mt-20 grid gap-10 md:grid-cols-2">
         <div>
-          <SectionHead eyebrow="Visit us" title="Timings & location" />
+          <SectionHead eyebrow="Visit us" title={settings.address ? 'Timings & location' : 'Meal timings'} />
           <div className="overflow-hidden rounded-2xl border border-line/70 bg-white">
             <ul className="divide-y divide-line">
               {MEALS.map((m) => (
@@ -413,11 +493,11 @@ export default function Home() {
                 </li>
               ))}
             </ul>
-            <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.address || 'Radixo')}`} target="_blank" rel="noreferrer" className="flex items-start gap-3 border-t border-line bg-cream/70 px-4 py-3.5 text-sm">
+            {settings.address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.address)}`} target="_blank" rel="noreferrer" className="flex items-start gap-3 border-t border-line bg-cream/70 px-4 py-3.5 text-sm">
               <MapPin className="mt-0.5 size-4 shrink-0 text-brand" />
-              <span className="min-w-0 flex-1 text-ink/80">{settings.address || 'Address coming soon'}</span>
+              <span className="min-w-0 flex-1 text-ink/80">{settings.address}</span>
               <span className="shrink-0 whitespace-nowrap font-semibold text-brand">Directions</span>
-            </a>
+            </a>}
           </div>
         </div>
         <div>

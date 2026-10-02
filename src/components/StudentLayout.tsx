@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, Link, useLocation } from 'react-router'
-import { ArrowRight, LogOut, Menu as MenuIcon, QrCode, Shield, Wand2, X } from 'lucide-react'
+import { ArrowRight, LogOut, Menu as MenuIcon, MessageCircle, QrCode, Shield, Wand2, X } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useAsync } from '../lib/useAsync'
 import { loadSettings } from '../lib/data'
@@ -142,29 +142,25 @@ export function StudentLayout() {
       </main>
 
       {!meta.immersive && (
-        <footer className="no-print bg-night text-white">
-          <div className="mx-auto grid max-w-6xl gap-10 px-6 py-12 sm:grid-cols-[1.4fr_1fr_1fr]">
-            <div>
-              <Brand light />
-              <p className="mt-3 max-w-xs font-script-italic text-xl text-white/70">Craft your own menu with ease and taste.</p>
-            </div>
-            <nav className="flex flex-col gap-2 text-sm font-semibold text-white/70" aria-label="Footer">
-              <p className="mb-1 text-xs font-bold uppercase tracking-[0.16em] text-white/40">Explore</p>
-              <Link to="/menu" className="hover:text-white">This week&rsquo;s menus</Link>
+        <footer className="no-print border-t border-white/5 bg-night text-white">
+          <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-6 py-10 md:flex-row md:justify-between md:py-8">
+            <Brand light />
+            <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm font-medium text-white/65" aria-label="Footer">
+              <Link to="/menu" className="hover:text-white">Menus</Link>
               <Link to="/menu/create" className="hover:text-white">Build your own</Link>
-              <Link to="/wallet" className="hover:text-white">Plans &amp; pricing</Link>
-              <Link to="/profile" className="hover:text-white">My QR pass</Link>
+              <Link to="/wallet" className="hover:text-white">Plans</Link>
+              <Link to="/profile" className="hover:text-white">My pass</Link>
             </nav>
-            <div className="text-sm text-white/70">
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-white/40">Visit</p>
-              <p>{settings.data?.address || 'Your nearest Radixo kitchen'}</p>
-              {settings.data?.whatsapp && <a href={`https://wa.me/${settings.data.whatsapp}`} className="mt-2 inline-block font-semibold text-white hover:underline">WhatsApp us</a>}
-            </div>
+            {settings.data?.whatsapp ? (
+              <a href={`https://wa.me/${settings.data.whatsapp}`} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-full bg-white/[0.07] px-4 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10">
+                <MessageCircle className="size-4" /> Chat with us
+              </a>
+            ) : <span className="hidden md:block md:w-28" aria-hidden />}
           </div>
-          <div className="border-t border-white/10">
-            <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-5 text-xs text-white/45">
-              <span>© {new Date().getFullYear()} Radixo</span>
-              <Link to="/welcome" className="font-semibold text-white/60 hover:text-white">Owner &amp; staff login</Link>
+          <div className="border-t border-white/[0.06]">
+            <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-4 text-xs text-white/40 sm:flex-row">
+              <span>© {new Date().getFullYear()} Radixo · Fresh meals for students</span>
+              <Link to="/welcome" className="hover:text-white/80">Team login</Link>
             </div>
           </div>
         </footer>

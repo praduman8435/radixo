@@ -6,7 +6,7 @@ import type { TableName, Tables } from '../types'
 import { OTP_REQUIRED } from '../config'
 import { cleanPhone, phoneEmail } from '../phone'
 
-const KEY = 'radixo-demo-db-v3' // v3: four meals, priced menus, custom menus
+const KEY = 'radixo-demo-db-v4' // v3: four meals, priced menus, custom menus
 const listeners = new Set<(u: { id: string; email: string } | null) => void>()
 
 function load(): DemoDB {
