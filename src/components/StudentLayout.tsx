@@ -58,7 +58,7 @@ export function StudentLayout() {
   }, [drawer])
 
   // Over the dark home hero the header is see-through; everywhere else (and once scrolled) it's solid white.
-  const dark = isHome && !scrolled
+  const dark = (isHome && !scrolled) || !!meta.immersive
   const navCls = ({ isActive }: { isActive: boolean }) =>
     cx('rounded-full px-4 py-2 text-[15px] font-semibold transition-colors', dark ? (isActive ? 'bg-white/10 text-white' : 'text-white/70 hover:text-white') : isActive ? 'bg-brand-50 text-brand' : 'text-ink/70 hover:text-ink')
 
@@ -78,9 +78,9 @@ export function StudentLayout() {
       <header className={cx('no-print sticky top-0 z-40 transition-[background,box-shadow] duration-300', dark ? 'border-b border-white/[0.06] bg-[#120d0c]' : 'border-b border-line/70 bg-white/90 shadow-[0_8px_30px_-20px_rgba(31,26,23,0.35)] backdrop-blur-md')}>
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:h-[72px] sm:px-6">
           {meta.back && (
-            <Link to={meta.back} aria-label="Back" className="grid size-9 shrink-0 place-items-center rounded-full bg-sand text-ink transition hover:bg-line md:hidden"><ArrowLeft className="size-[18px]" strokeWidth={2.4} /></Link>
+            <Link to={meta.back} aria-label="Back" className="grid size-9 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/15 md:hidden"><ArrowLeft className="size-[18px]" strokeWidth={2.4} /></Link>
           )}
-          {meta.back && <h1 className="min-w-0 flex-1 truncate text-center text-[16px] font-semibold text-ink md:hidden">{meta.title}</h1>}
+          {meta.back && <h1 className="min-w-0 flex-1 truncate text-center text-[16px] font-semibold text-white md:hidden">{meta.title}</h1>}
           <div className={meta.back ? 'hidden md:block' : ''}><Brand light={dark} /></div>
 
           <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="Main">
