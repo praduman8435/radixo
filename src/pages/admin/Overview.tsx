@@ -2,8 +2,8 @@ import { Link } from 'react-router'
 import { Users, UtensilsCrossed, BadgeCheck, Star, Trash2, MessageCircle, ArrowRight, CalendarClock, AlertTriangle } from 'lucide-react'
 import { useAsync } from '../../lib/useAsync'
 import { loadOps, students, whatsappLink } from '../../lib/admin'
-import { addDays, currentMeal, diffDays, formatDate, formatDateTime, formatWeekRange, mondayOf, timeUntil, today } from '../../lib/dates'
-import { MEAL_NAME, formatINR, isEligible, isLocked, memberState, paymentLabel, prepSheet } from '../../lib/logic'
+import { addDays, currentMeal, diffDays, formatDate, formatDateTime, formatWeekRange, mondayOf, today } from '../../lib/dates'
+import { MEAL_NAME, formatINR, isEligible, memberState, paymentLabel, prepSheet } from '../../lib/logic'
 import { api } from '../../lib/backend'
 import { MEALS, type Meal } from '../../lib/types'
 import { Avatar, Badge, Card, ErrorNote, LinkButton, PageHeader, PageLoader, Stat, cx } from '../../components/ui'
@@ -75,7 +75,7 @@ export default function Overview() {
         <Stat
           label="Next week's menu"
           value={nextWeek ? <>{nextPicked.size}<span className="text-lg text-muted"> / {activeNextWeek.length}</span></> : '—'}
-          hint={nextWeek ? (isLocked(nextWeek) ? 'Choices closed' : `members chose · ${timeUntil(nextWeek.choice_deadline)}`) : 'Not created yet'}
+          hint={nextWeek ? (nextWeek.status === 'published' ? 'members chose · meals lock 24 h before' : 'Not published yet') : 'Not created yet'}
           icon={<CalendarClock className="size-4" />}
           tone="green"
         />
@@ -167,7 +167,7 @@ export default function Overview() {
               })}
             </ul>
           )}
-          {nextWeek && <p className="mt-4 border-t border-line pt-3 text-xs text-muted">Menu {formatWeekRange(nextWeek.week_start)}: choices close {formatDateTime(nextWeek.choice_deadline)}.</p>}
+          {nextWeek && <p className="mt-4 border-t border-line pt-3 text-xs text-muted">Menu {formatWeekRange(nextWeek.week_start)}: {nextWeek.status === 'published' ? 'published. Students can book each meal up to 24 hours before it.' : 'not published yet. Publish it so students can plan ahead.'}</p>}
         </Card>
       </div>
     </div>

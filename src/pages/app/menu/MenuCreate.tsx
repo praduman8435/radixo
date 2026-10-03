@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { ArrowRight, Check, Copy, Lock, Plus, X } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
-import { useAsync } from '../../../lib/useAsync'
-import { changeMenu, loadSettings, savePicks } from '../../../lib/data'
-import { CHANGE_LOCK_HOURS, changedSlots, choiceSlots, slotLocked, weekCredit } from '../../../lib/booking'
-import { DAY_NAMES, addDays, formatDate, formatWeekRange, mondayOf, today, weekdayIndex } from '../../../lib/dates'
-import { MEAL_NAME, customCount, customTotal, formatINR, isLocked, mealLines, slotCatalog } from '../../../lib/logic'
+import { changeMenu, savePicks } from '../../../lib/data'
+import { LOCK_HOURS, bookingsInWeek, changedSlots, choiceSlots, coveredKeys, firstOpenSlot, slotLocked, valueOver, weekOpen } from '../../../lib/booking'
+import { DAY_NAMES, DAY_SHORT, addDays, formatDate, formatWeekRange, mondayOf, today, weekdayIndex } from '../../../lib/dates'
+import { MEAL_NAME, customCount, customTotal, formatINR, mealLines, slotCatalog } from '../../../lib/logic'
 import { MEALS, slotKey, type CustomMenu, type Dish, type Meal, type MenuItem, type Settings } from '../../../lib/types'
 import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { useToast } from '../../../components/toast'
@@ -16,7 +15,9 @@ import { changeKey, draftKey, readDraft, useMenuData } from './useMenuData'
 import { useLoginGate } from '../../../components/LoginSheet'
 
 const timesOf = (s: Settings | undefined, m: Meal) => (s ? { breakfast: s.breakfast_time, lunch: s.lunch_time, snacks: s.snacks_time, dinner: s.dinner_time }[m] : '')
-const dayCount = (menu: CustomMenu, day: number) => MEALS.reduce((n, m) => n + (menu[slotKey(day, m)]?.length ?? 0), 0)
+
+/** One day column in the builder. `weekday` keys the menu ("weekday-meal"); `items` is that date's kitchen menu. */
+type Day = { date: string; weekday: number; items: MenuItem[]; meals: Meal[]; why: (m: Meal) => string | null }
 
 export default function MenuCreate() {
   const { profile } = useAuth()
@@ -27,111 +28,132 @@ export default function MenuCreate() {
   const [params, setParams] = useSearchParams()
   const weekParam = params.get('week')
   const q = useMenuData(uid, weekParam)
-  const settings = useAsync(() => loadSettings(), [])
   const [pendingSave, setPendingSave] = useState(false)
   const [menu, setMenu] = useState<CustomMenu>({})
   const [readyFor, setReadyFor] = useState<string | null>(null) // week the editor was filled for
   const ready = !!readyFor && readyFor === q.data?.week?.id
-  const setReady = (v: boolean) => setReadyFor(v ? q.data?.week?.id ?? null : null)
-  const [day, setDay] = useState(0)
+  const [dayIdx, setDayIdx] = useState(0)
   const [dir, setDir] = useState<1 | -1>(1)
   const [picker, setPicker] = useState<Meal | null>(null)
   const [saving, setSaving] = useState(false)
   const touchX = useRef<number | null>(null)
 
+  const d = q.data
+  const settings = d?.settings
+  const booked = !!d?.booked
+  // Booked: edit this week's menu (meals in the booking, 24 h+ away). Not booked: plan the next 7 days from the first
+  // meal that can still be booked; those dishes become the weekly pattern the booking repeats.
+  const days: Day[] = useMemo(() => {
+    if (!d?.week) return []
+    const week = d.week
+    if (booked && uid && d.member) {
+      const covered = coveredKeys(d.member.subs, uid, week)
+      return DAY_NAMES.map((_, i) => ({
+        date: addDays(week.week_start, i), weekday: i, items: d.items, meals: MEALS.filter((m) => slotCatalog(d.items, i, m).length > 0),
+        why: (m: Meal) => (!covered.has(slotKey(i, m)) ? 'Not booked' : slotLocked(week.week_start, i, m, settings) ? 'Locked' : null),
+      }))
+    }
+    const start = firstOpenSlot(settings)
+    const startIdx = MEALS.indexOf(start.meal)
+    const itemsFor = (date: string) => (date > addDays(week.week_start, 6) && d.following && date <= addDays(d.following.week.week_start, 6) ? d.following.items : d.items)
+    const span = startIdx === 0 ? 7 : 8 // a 7-day booking from lunch ends with the next week's breakfast
+    return Array.from({ length: span }, (_, i) => {
+      const date = addDays(start.date, i)
+      const wd = weekdayIndex(date)
+      const its = itemsFor(date)
+      const meals = MEALS.filter((m, mi) => slotCatalog(its, wd, m).length > 0 && (i === 0 ? mi >= startIdx : i === 7 ? mi < startIdx : true))
+      return { date, weekday: wd, items: its, meals, why: () => null }
+    })
+  }, [d, booked, uid, settings])
+
   // Booked weeks start from the menu they get now (ready-made or their own); otherwise the saved custom menu,
   // else an unsaved draft on this phone, else empty.
-  const baseline = useMemo(() => (q.data?.booked && q.data.week ? choiceSlots(q.data.items, q.data.packs, q.data.selection) : null), [q.data])
+  const baseline = useMemo(() => (d?.booked && d.week ? choiceSlots(d.items, d.packs, d.selection) : null), [d])
   useEffect(() => {
-    const d = q.data
     if (!d?.week || q.loading || d.week.id === readyFor) return
     const saved = d.selection?.mode === 'custom' ? d.selection.custom : null
     setMenu(baseline ?? readDraft(d.week.id) ?? saved ?? {})
-    setDay(d.week.week_start === mondayOf(today()) ? weekdayIndex(today()) : 0)
+    const todayIdx = days.findIndex((x) => x.date >= today() && x.meals.some((m) => !x.why(m)))
+    setDayIdx(Math.max(0, todayIdx))
     setReadyFor(d.week.id)
-  }, [q.data, q.loading, readyFor, baseline])
+  }, [d, q.loading, readyFor, baseline, days])
 
   useEffect(() => {
-    const w = q.data?.week
-    if (!ready || !w) return
+    const w = d?.week
+    if (!ready || !w || booked) return
     try {
       localStorage.setItem(draftKey(w.id), JSON.stringify(menu))
     } catch {
       /* private mode: the draft just isn't kept */
     }
-  }, [menu, ready, q.data?.week])
+  }, [menu, ready, d?.week, booked])
 
-  const dishes = q.data?.dishes
-  const credit = q.data?.credit ?? 0 // already paid for this week (booking + approved changes)
-  const booked = !!q.data?.booked
-  const total = useMemo(() => (dishes ? customTotal(menu, dishes) : 0), [menu, dishes])
-  // Pay only the difference from the menu they have now: at least what's paid, or what the current menu is worth.
-  const baseValue = Math.max(credit, baseline && dishes ? customTotal(baseline, dishes) : 0)
+  const dishes = d?.dishes
+  const credit = d?.credit ?? 0 // already paid for this week (booking + approved changes)
+  const coveredSet = useMemo(() => (booked && uid && d?.member && d.week ? coveredKeys(d.member.subs, uid, d.week) : null), [booked, uid, d])
+  // Booked: only meals inside the booking count. Pay only the difference from what's paid or the current menu's value.
+  const total = useMemo(() => (dishes ? (coveredSet ? valueOver(menu, coveredSet, dishes) : customTotal(menu, dishes)) : 0), [menu, dishes, coveredSet])
+  const baseValue = Math.max(credit, baseline && dishes && coveredSet ? valueOver(baseline, coveredSet, dishes) : 0)
   const charge = booked ? Math.max(0, total - baseValue) : total
   const dirty = baseline ? changedSlots(baseline, menu).length > 0 : true
 
-  // A guest tapped Save: once they've logged in (and their plan data reloaded), save straight away.
+  // A guest tapped Save: once they've logged in (and their data reloaded), save straight away.
   useEffect(() => {
-    if (pendingSave && uid && q.data?.member && !q.loading) {
+    if (pendingSave && uid && d?.member && !q.loading) {
       setPendingSave(false)
       void save()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingSave, uid, q.data, q.loading])
+  }, [pendingSave, uid, d, q.loading])
 
-  if (q.loading && !q.data) return <PageLoader />
+  if (q.loading && !d) return <PageLoader />
   if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
-  const { week, items } = q.data!
-  if (!week) return <EmptyState title="No menu published yet" />
-  if (isLocked(week) && !booked) {
-    return (
-      <EmptyState icon={<Lock className="size-6" />} title="Choices for this week are closed" action={<Link to="/menu/view/mine" className="font-semibold text-brand">See your menu</Link>}>
-        The kitchen has started buying for {formatWeekRange(week.week_start)}. Next week opens on Thursday.
-      </EmptyState>
-    )
-  }
+  const week = d!.week
+  if (!week || days.length === 0 || (!booked && !weekOpen(week, settings))) return <EmptyState icon={<Lock className="size-6" />} title="Next week’s menu isn’t out yet">The kitchen publishes it soon. Check back in a bit.</EmptyState>
 
-  const covered = booked
-  const pending = q.data!.pendingChange
-  // Booked members can change any meal that starts more than 48 hours from now.
-  const lockedMeal = (d: number, meal: Meal) => booked && slotLocked(week.week_start, d, meal, settings.data)
-  const otherWeeks = (q.data!.weeks ?? []).filter((w) => addDays(w.week_start, 6) >= today() && (!isLocked(w) || (uid && q.data!.member && weekCredit(q.data!.member.subs, uid, w) > 0)))
+  const pending = d!.pendingChange
+  const bookedWeeks = booked && uid && d!.member ? d!.weeks.filter((w) => weekOpen(w, settings) && bookingsInWeek(d!.member!.subs, uid, w).length > 0) : []
+  const cur = days[Math.min(dayIdx, days.length - 1)]
+  const wd = cur.weekday
   const count = customCount(menu)
-  const daysFilled = DAY_NAMES.filter((_, i) => dayCount(menu, i) > 0).length
-  const date = addDays(week.week_start, day)
+  const daysFilled = new Set(days.filter((x) => x.meals.some((m) => (menu[slotKey(x.weekday, m)] ?? []).length)).map((x) => x.weekday)).size
+  const start = days[0]
+  const followingMissing = !booked && days.some((x) => x.date > addDays(week.week_start, 6)) && !d!.following
 
-  const changeDay = (d: number) => {
-    if (d < 0 || d > 6 || d === day) return
-    setDir(d > day ? 1 : -1)
-    setDay(d)
+  const changeDay = (i: number) => {
+    if (i < 0 || i >= days.length || i === dayIdx) return
+    setDir(i > dayIdx ? 1 : -1)
+    setDayIdx(i)
   }
+  const blocked = (x: Day, m: Meal) => !x.meals.includes(m) || !!x.why(m)
   const toggle = (meal: Meal, dishId: string) => {
-    if (lockedMeal(day, meal)) return
-    const key = slotKey(day, meal)
+    if (blocked(cur, meal)) return
+    const key = slotKey(wd, meal)
     setMenu((m) => {
-      const cur = m[key] ?? []
-      const next = cur.includes(dishId) ? cur.filter((x) => x !== dishId) : [...cur, dishId]
+      const c = m[key] ?? []
+      const next = c.includes(dishId) ? c.filter((x) => x !== dishId) : [...c, dishId]
       const out = { ...m, [key]: next }
       if (next.length === 0) delete out[key]
       return out
     })
   }
+  const setMeal = (meal: Meal, ids: string[]) => setMenu((m) => ({ ...m, [slotKey(wd, meal)]: ids }))
 
-  /** Copy today's dishes to the other days, wherever the kitchen serves the same dish that day. */
+  /** Copy this day's dishes to the other days, wherever the kitchen serves the same dish that day. */
   function copyToWeek() {
     let copied = 0
     setMenu((m) => {
       const out: CustomMenu = { ...m }
-      for (let d = 0; d < 7; d++) {
-        if (d === day) continue
+      for (const x of days) {
+        if (x.weekday === wd) continue
         for (const meal of MEALS) {
-          if (lockedMeal(d, meal)) continue
-          const src = m[slotKey(day, meal)] ?? []
+          if (blocked(x, meal)) continue
+          const src = m[slotKey(wd, meal)] ?? []
           if (!src.length) continue
-          const offered = slotCatalog(items, d, meal)
+          const offered = slotCatalog(x.items, x.weekday, meal)
           const ids = src.filter((id) => offered.includes(id))
           if (ids.length) {
-            out[slotKey(d, meal)] = ids
+            out[slotKey(x.weekday, meal)] = ids
             copied++
           }
         }
@@ -154,10 +176,9 @@ export default function MenuCreate() {
           return nav(`/wallet?change=${week!.id}`)
         }
         await changeMenu(week!.id, choice)
-        try { localStorage.removeItem(draftKey(week!.id)) } catch { /* ignore */ }
         toast('Menu updated')
         q.reload()
-        setReady(false)
+        setReadyFor(null)
         return
       }
       await savePicks(uid, week!.id, 'custom', null, {}, menu)
@@ -170,23 +191,22 @@ export default function MenuCreate() {
     }
   }
 
-  const setMeal = (meal: Meal, ids: string[]) => setMenu((m) => ({ ...m, [slotKey(day, meal)]: ids }))
-  const served = MEALS.filter((meal) => slotCatalog(items, day, meal).length > 0)
-  const dayIds = MEALS.flatMap((m) => menu[slotKey(day, m)] ?? [])
+  const dayIds = cur.meals.flatMap((m) => menu[slotKey(wd, m)] ?? [])
   const dayTotal = dayIds.reduce((s, id) => s + (dishes!.get(id)?.price ?? 0), 0)
+  const canCopy = dayIds.length > 0 && days.some((x) => x.weekday !== wd && x.meals.some((m) => !blocked(x, m)))
 
   return (
     <div className="-mx-4 -mt-4 min-h-[calc(100dvh-64px)] bg-[#0f0b0a] pb-28 text-white sm:-mx-6">
       <div className="mx-auto hidden max-w-2xl px-6 pt-8 md:block">
-        <h1 className="text-[26px] font-semibold tracking-tight">Build your own menu</h1>
+        <h1 className="text-[26px] font-semibold tracking-tight">{booked ? 'Your menu' : 'Build your own menu'}</h1>
         <p className="mt-1 text-sm text-white/50">Pick only what you eat. You pay for exactly what&rsquo;s on your plate.</p>
       </div>
 
-      {/* Week bar: stays on top while you scroll */}
+      {/* Day bar: stays on top while you scroll */}
       <div className="sticky top-16 z-20 border-b border-white/[0.06] bg-[#0f0b0a] sm:top-[72px] md:mt-4">
         <div className="mx-auto max-w-2xl px-4 pb-3 pt-3 sm:px-6">
           <div className="mb-2.5 flex items-center justify-between gap-3 text-xs text-white/50">
-            <span className="truncate">Week of {formatWeekRange(week.week_start)}</span>
+            <span className="truncate">{booked ? `Week of ${formatWeekRange(week.week_start)}` : `Your 7 days from ${start.date === today() ? 'today' : start.date === addDays(today(), 1) ? 'tomorrow' : formatDate(start.date, { weekday: true })}${MEAL_NAME[start.meals[0] ?? 'breakfast'] && start.meals[0] !== 'breakfast' ? ` ${MEAL_NAME[start.meals[0]].toLowerCase()}` : ''}`}</span>
             <span className="flex shrink-0 items-center gap-2">
               <span className="tabular">{daysFilled}/7 days</span>
               <span className="h-1 w-12 overflow-hidden rounded-full bg-white/10" aria-hidden>
@@ -194,23 +214,23 @@ export default function MenuCreate() {
               </span>
             </span>
           </div>
-          <div className="grid grid-cols-7 gap-1" role="tablist" aria-label="Day">
-            {DAY_NAMES.map((n, i) => {
-              const d = addDays(week.week_start, i)
-              const on = i === day
-              const filled = dayCount(menu, i) > 0
+          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }} role="tablist" aria-label="Day">
+            {days.map((x, i) => {
+              const on = i === dayIdx
+              const filled = x.meals.some((m) => (menu[slotKey(x.weekday, m)] ?? []).length > 0)
+              const dead = x.meals.every((m) => !!x.why(m))
               return (
-                <button key={n} type="button" role="tab" aria-selected={on} aria-label={`${n}${filled ? ', has dishes' : ''}`} onClick={() => changeDay(i)} className={cx('flex h-12 flex-col items-center justify-center rounded-xl transition-colors', on ? 'bg-white text-ink' : 'text-white/75 hover:bg-white/[0.06]')}>
-                  <span className={cx('text-[10px] font-semibold uppercase', on ? 'text-ink/55' : 'text-white/40')}>{n.slice(0, 3)}</span>
-                  <span className="text-[15px] font-semibold leading-tight tabular">{Number(d.slice(8))}</span>
+                <button key={x.date} type="button" role="tab" aria-selected={on} aria-label={`${DAY_NAMES[x.weekday]} ${formatDate(x.date)}${filled ? ', has dishes' : ''}`} onClick={() => changeDay(i)} className={cx('flex h-12 flex-col items-center justify-center rounded-xl transition-colors', on ? 'bg-white text-ink' : dead ? 'text-white/30 hover:bg-white/[0.04]' : 'text-white/75 hover:bg-white/[0.06]')}>
+                  <span className={cx('text-[10px] font-semibold uppercase', on ? 'text-ink/55' : 'text-white/40')}>{DAY_SHORT[x.weekday]}</span>
+                  <span className="text-[15px] font-semibold leading-tight tabular">{Number(x.date.slice(8))}</span>
                   <span className={cx('mt-0.5 size-1 rounded-full', filled ? (on ? 'bg-ink' : 'bg-[#34c759]') : 'bg-transparent')} />
                 </button>
               )
             })}
           </div>
-          {otherWeeks.length > 1 && (
+          {bookedWeeks.length > 1 && (
             <div className="mt-2.5 flex gap-1.5" role="tablist" aria-label="Week">
-              {otherWeeks.map((w) => (
+              {bookedWeeks.map((w) => (
                 <button key={w.id} type="button" role="tab" aria-selected={w.id === week.id} onClick={() => setParams(w.id === week.id ? params : { week: w.id }, { replace: true })} className={cx('h-7 rounded-full px-3 text-[11px] font-semibold transition-colors', w.id === week.id ? 'bg-white/[0.12] text-white' : 'text-white/50 hover:text-white')}>
                   {w.week_start === mondayOf(today()) ? 'This week' : `From ${formatDate(w.week_start)}`}
                 </button>
@@ -220,15 +240,17 @@ export default function MenuCreate() {
         </div>
       </div>
 
-      {booked && (
-        <div className="mx-auto max-w-2xl px-4 pt-3 sm:px-6">
-          {pending ? (
+      <div className="mx-auto max-w-2xl px-4 pt-3 sm:px-6">
+        {booked ? (
+          pending ? (
             <p className="rounded-xl bg-turmeric/10 px-3.5 py-2.5 text-xs text-turmeric ring-1 ring-turmeric/25">Your change ({formatINR((pending.amount ?? 0) + (pending.wallet_used ?? 0))}) is waiting for its payment check. Your menu updates once it&rsquo;s confirmed.</p>
           ) : (
-            <p className="flex items-center gap-2 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-xs text-white/60 ring-1 ring-white/[0.08]"><Lock className="size-3.5 shrink-0" /> You can change any meal up to {CHANGE_LOCK_HOURS} hours before it. Costlier changes are paid when you save.</p>
-          )}
-        </div>
-      )}
+            <p className="flex items-center gap-2 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-xs text-white/60 ring-1 ring-white/[0.08]"><Lock className="size-3.5 shrink-0" /> Change any meal up to {LOCK_HOURS} hours before it. Costlier changes are paid when you save.</p>
+          )
+        ) : (
+          <p className="flex items-center gap-2 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-xs text-white/60 ring-1 ring-white/[0.08]"><Lock className="size-3.5 shrink-0" /> Meals can be booked up to {LOCK_HOURS} hours ahead. This plan repeats every week you book.{followingMissing ? ' Next week’s menu isn’t out yet, so those days show this week’s dishes.' : ''}</p>
+        )}
+      </div>
 
       {/* Selected day */}
       <section
@@ -238,51 +260,51 @@ export default function MenuCreate() {
           if (touchX.current === null) return
           const dx = e.changedTouches[0].clientX - touchX.current
           touchX.current = null
-          if (Math.abs(dx) > 60) changeDay(day + (dx < 0 ? 1 : -1))
+          if (Math.abs(dx) > 60) changeDay(dayIdx + (dx < 0 ? 1 : -1))
         }}
       >
         <div className="flex items-center justify-between gap-3 py-4">
           <div className="min-w-0">
-            <h2 className="text-[16px] font-semibold">{date === today() ? 'Today' : DAY_NAMES[day]} <span className="font-normal text-white/45">{formatDate(date)}</span></h2>
+            <h2 className="text-[16px] font-semibold">{cur.date === today() ? 'Today' : DAY_NAMES[wd]} <span className="font-normal text-white/45">{formatDate(cur.date)}</span></h2>
             <p className="mt-0.5 text-xs text-white/45">{dayIds.length ? `${dayIds.length} dish${dayIds.length === 1 ? '' : 'es'} · ${formatINR(dayTotal)}` : 'Nothing added yet'}</p>
           </div>
-          {dayIds.length > 0 && DAY_NAMES.some((_, d) => d !== day && MEALS.some((m) => !lockedMeal(d, m))) && (
+          {canCopy && (
             <button type="button" onClick={copyToWeek} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-white/70 ring-1 ring-white/12 transition hover:bg-white/[0.06] hover:text-white"><Copy className="size-3.5" /> Copy to all days</button>
           )}
         </div>
 
-        <div key={day} className={dir > 0 ? 'day-in-right' : 'day-in-left'}>
-          {served.length === 0 ? (
-            <p className="rounded-2xl bg-white/[0.04] p-6 text-center text-sm text-white/50">The kitchen isn&rsquo;t serving on {DAY_NAMES[day]}.</p>
+        <div key={cur.date} className={dir > 0 ? 'day-in-right' : 'day-in-left'}>
+          {cur.meals.length === 0 ? (
+            <p className="rounded-2xl bg-white/[0.04] p-6 text-center text-sm text-white/50">The kitchen isn&rsquo;t serving on {DAY_NAMES[wd]}.</p>
           ) : (
             <div className="divide-y divide-white/[0.06] overflow-hidden rounded-2xl bg-white/[0.035] ring-1 ring-white/[0.08]">
-              {served.map((meal) => {
-                const chosen = (menu[slotKey(day, meal)] ?? []).map((id) => dishes!.get(id)).filter((x): x is Dish => !!x)
-                const sub = chosen.reduce((s, d) => s + d.price, 0)
-                const locked = lockedMeal(day, meal)
+              {cur.meals.map((meal) => {
+                const chosen = (menu[slotKey(wd, meal)] ?? []).map((id) => dishes!.get(id)).filter((x): x is Dish => !!x)
+                const sub = chosen.reduce((s, x) => s + x.price, 0)
+                const why = cur.why(meal)
                 return (
-                  <div key={meal} className="px-3.5 py-3">
+                  <div key={meal} className={cx('px-3.5 py-3', why === 'Not booked' && 'opacity-45')}>
                     <div className="flex items-center gap-3">
                       <img src={`/meals/${meal}.png`} alt="" className={cx('size-9 shrink-0 rounded-full transition', !chosen.length && 'opacity-60 grayscale-[40%]')} />
                       <div className="min-w-0 flex-1">
                         <p className="text-[14px] font-semibold leading-tight">{MEAL_NAME[meal]}</p>
-                        <p className="mt-0.5 truncate text-[11px] text-white/40">{timesOf(settings.data, meal)}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-white/40">{timesOf(settings, meal)}</p>
                       </div>
                       {chosen.length > 0 && <span className="text-[13px] font-semibold tabular text-white/75">{formatINR(sub)}</span>}
-                      {locked ? (
-                        <span className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-white/40 ring-1 ring-white/[0.08]" title={`Meals can’t change within ${CHANGE_LOCK_HOURS} hours`}><Lock className="size-3" /> Locked</span>
+                      {why ? (
+                        <span className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-white/40 ring-1 ring-white/[0.08]" title={why === 'Locked' ? `Meals lock ${LOCK_HOURS} hours before` : 'Outside your booking'}><Lock className="size-3" /> {why}</span>
                       ) : (
-                      <button type="button" onClick={() => setPicker(meal)} className={cx('inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-semibold transition', chosen.length ? 'text-white/70 ring-1 ring-white/12 hover:bg-white/[0.06] hover:text-white' : 'bg-white text-ink hover:bg-white/90')}>
-                        {chosen.length ? 'Edit' : <><Plus className="size-3.5" strokeWidth={2.6} /> Add</>}
-                      </button>
+                        <button type="button" onClick={() => setPicker(meal)} className={cx('inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-semibold transition', chosen.length ? 'text-white/70 ring-1 ring-white/12 hover:bg-white/[0.06] hover:text-white' : 'bg-white text-ink hover:bg-white/90')}>
+                          {chosen.length ? 'Edit' : <><Plus className="size-3.5" strokeWidth={2.6} /> Add</>}
+                        </button>
                       )}
                     </div>
                     {chosen.length > 0 && (
                       <ul className="mt-2.5 flex flex-wrap gap-1.5 pl-12">
-                        {chosen.map((d) => (
-                          <li key={d.id} className="inline-flex h-7 items-center gap-0.5 rounded-full bg-white/[0.06] pl-2.5 pr-1 text-[12.5px] text-white/85 ring-1 ring-white/[0.06]">
-                            {d.name}
-                            {!locked && <button type="button" onClick={() => toggle(meal, d.id)} className="grid size-5 place-items-center rounded-full text-white/35 transition hover:bg-white/10 hover:text-white" aria-label={`Remove ${d.name}`}><X className="size-3" strokeWidth={2.6} /></button>}
+                        {chosen.map((x) => (
+                          <li key={x.id} className="inline-flex h-7 items-center gap-0.5 rounded-full bg-white/[0.06] pl-2.5 pr-1 text-[12.5px] text-white/85 ring-1 ring-white/[0.06]">
+                            {x.name}
+                            {!why && <button type="button" onClick={() => toggle(meal, x.id)} className="grid size-5 place-items-center rounded-full text-white/35 transition hover:bg-white/10 hover:text-white" aria-label={`Remove ${x.name}`}><X className="size-3" strokeWidth={2.6} /></button>}
                           </li>
                         ))}
                       </ul>
@@ -295,9 +317,9 @@ export default function MenuCreate() {
 
           <div className="mt-3 flex items-center justify-between gap-3 text-xs">
             <span className="text-white/35">{count === 0 ? 'Skip any meal you don’t eat.' : 'Swipe to change day'}</span>
-            {day < 6 && (
-              <button type="button" onClick={() => changeDay(day + 1)} className="inline-flex h-8 items-center gap-1 rounded-full px-2 font-semibold text-white/65 transition hover:text-white">
-                {DAY_NAMES[day + 1]} <ArrowRight className="size-3.5" />
+            {dayIdx < days.length - 1 && (
+              <button type="button" onClick={() => changeDay(dayIdx + 1)} className="inline-flex h-8 items-center gap-1 rounded-full px-2 font-semibold text-white/65 transition hover:text-white">
+                {DAY_NAMES[days[dayIdx + 1].weekday]} <ArrowRight className="size-3.5" />
               </button>
             )}
           </div>
@@ -309,28 +331,28 @@ export default function MenuCreate() {
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-2.5 sm:px-6">
           <div className="min-w-0 flex-1">
             <p className="flex items-baseline gap-1">
-              <span className="text-[19px] font-bold tabular">{covered ? (dirty ? (charge ? `+${formatINR(charge)}` : formatINR(0)) : formatINR(total)) : formatINR(charge)}</span>
-              <span className="truncate text-xs text-white/45">{covered ? (dirty ? (charge ? 'extra to pay' : 'no extra cost') : 'in your booking') : '/ week'}</span>
+              <span className="text-[19px] font-bold tabular">{booked ? (dirty ? (charge ? `+${formatINR(charge)}` : formatINR(0)) : formatINR(total)) : formatINR(charge)}</span>
+              <span className="truncate text-xs text-white/45">{booked ? (dirty ? (charge ? 'extra to pay' : 'no extra cost') : 'in your booking') : '/ week'}</span>
             </p>
-            <p className="truncate text-[11px] text-white/45">{covered ? `New menu ${formatINR(total)} · now ${formatINR(baseValue)}` : count ? `${count} dish${count === 1 ? '' : 'es'} · ${daysFilled} day${daysFilled === 1 ? '' : 's'}` : 'Add dishes to start'}</p>
+            <p className="truncate text-[11px] text-white/45">{booked ? `New menu ${formatINR(total)} · now ${formatINR(baseValue)}` : count ? `${count} dish${count === 1 ? '' : 'es'} · ${daysFilled} day${daysFilled === 1 ? '' : 's'}` : 'Add dishes to start'}</p>
           </div>
-          <button type="button" onClick={save} disabled={saving || count === 0 || (covered && (!dirty || !!pending))} className="bg-brand-grad inline-flex h-11 shrink-0 items-center rounded-full px-5 text-[14px] font-semibold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-40">
-            {saving ? 'Saving…' : covered ? (!dirty ? 'Saved' : charge > 0 ? `Pay ${formatINR(charge)} & save` : 'Save changes') : 'Save & book'}
+          <button type="button" onClick={save} disabled={saving || count === 0 || (booked && (!dirty || !!pending))} className="bg-brand-grad inline-flex h-11 shrink-0 items-center rounded-full px-5 text-[14px] font-semibold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-40">
+            {saving ? 'Saving…' : booked ? (!dirty ? 'Saved' : charge > 0 ? `Pay ${formatINR(charge)} & save` : 'Save changes') : 'Save & book'}
           </button>
         </div>
       </div>
 
       {picker && dishes && (
         <ItemPicker
-          day={day}
+          day={wd}
           meal={picker}
-          items={items}
+          items={cur.items}
           dishes={dishes}
           menu={menu}
           onMeal={setPicker}
           onToggle={(id) => toggle(picker, id)}
           onSet={(ids) => setMeal(picker, ids)}
-          locked={(m) => lockedMeal(day, m)}
+          locked={(m) => blocked(cur, m)}
           onClose={() => setPicker(null)}
         />
       )}

@@ -130,8 +130,11 @@ export interface Subscription {
   plan_id: string | null // legacy fixed plans
   pack_id: string | null // ready-made menu booked (first week's pack)
   payment_id: string | null
-  start_date: string // a Monday
-  end_date: string // inclusive, a Sunday
+  start_date: string // first day (any day of the week)
+  /** First meal on start_date. A booking covers 7 × weeks days of meals: from (start_date, start_meal) up to, not
+   *  including, the same meal 7 × weeks days later. end_date is the last date with a covered meal. */
+  start_meal: Meal
+  end_date: string
   meals: Meal[]
   status: 'active' | 'cancelled'
   source: 'pack' | 'custom' | 'plan'
@@ -145,8 +148,8 @@ export interface Subscription {
 
 /** What a payment pays for; the database fills in prices and dates. */
 export type BookingSpec =
-  | { kind: 'pack'; pack_id: string; weeks: number }
-  | { kind: 'custom'; week_id: string; weeks: number }
+  | { kind: 'pack'; pack_id: string; weeks: number; start_date?: string }
+  | { kind: 'custom'; week_id: string; weeks: number; start_date?: string }
   | { kind: 'extra'; week_id: string }
 
 export interface WalletTxn {

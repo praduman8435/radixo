@@ -3,8 +3,9 @@ import { Link, useNavigate } from 'react-router'
 import { Plus, Check, ChevronRight, Clock3, Eye, Lock, RotateCcw, X } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { changeMenu } from '../../../lib/data'
-import { formatDateTime, formatWeekRange, mondayOf, timeUntil, today, weekdayIndex } from '../../../lib/dates'
-import { MEAL_NAME, customCount, customMeals, customTotal, dishesFor, formatINR, isLocked, mealsLabel } from '../../../lib/logic'
+import { addDays, formatDate, formatWeekRange, mondayOf, today, weekdayIndex } from '../../../lib/dates'
+import { firstOpenSlot, weekOpen } from '../../../lib/booking'
+import { MEAL_NAME, customCount, customMeals, customTotal, dishesFor, formatINR, mealsLabel } from '../../../lib/logic'
 import { MEALS, type Dish, type Meal, type MenuItem, type Pack, type Selection } from '../../../lib/types'
 import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { useToast } from '../../../components/toast'
@@ -61,7 +62,8 @@ export default function MenuHome() {
 
   const data = q.data
   const week = data?.week
-  const locked = week ? isLocked(week) && !data?.booked : true
+  const locked = week ? !data?.booked && !weekOpen(week, data?.settings) : true
+  const open = firstOpenSlot(data?.settings)
   const credit = data?.credit ?? 0
   const booked = !!data?.booked // this week is already paid for by a booking
   const thisWeek = !!week && week.week_start === mondayOf(today())
@@ -193,7 +195,7 @@ export default function MenuHome() {
         <img src="/menu/chef-lineart.jpg" alt="" className="pointer-events-none absolute bottom-0 right-0 hidden w-[460px] opacity-40 [mask-image:linear-gradient(to_left,black_40%,transparent)] sm:block" aria-hidden />
         <div className="relative mx-auto max-w-6xl">
           <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-medium text-white/75">
-            {locked ? <><Lock className="size-3.5" /> Choices closed for this week</> : <><Clock3 className="size-3.5" /> Choose by {formatDateTime(week.choice_deadline)} · {timeUntil(week.choice_deadline)}</>}
+            {locked ? <><Lock className="size-3.5" /> This week is over · next week&rsquo;s menu is coming</> : <><Clock3 className="size-3.5" /> Book from {open.date === today() ? 'today' : open.date === addDays(today(), 1) ? 'tomorrow' : formatDate(open.date, { weekday: true })} {MEAL_NAME[open.meal].toLowerCase()} · meals lock 24 h before</>}
           </p>
           <h1 className="mt-3 text-[24px] font-semibold leading-tight tracking-tight sm:mt-4 sm:text-[36px]">Menus for {formatWeekRange(week.week_start)}</h1>
           <p className="mt-1.5 max-w-md text-sm text-white/55 sm:text-[15px]">Swipe right to book, left to skip. Tap a card to see the whole week.</p>

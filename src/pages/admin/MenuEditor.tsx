@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, CalendarPlus, Eye, EyeOff, Plus, Star, Trash2, X } 
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
 import { copyWeek, createEmptyWeek, loadWeekContent } from '../../lib/data'
-import { DAY_NAMES, DAY_SHORT, addDays, formatDateTime, formatWeekRange, mondayOf, parseISODate, today } from '../../lib/dates'
+import { DAY_NAMES, DAY_SHORT, addDays, formatWeekRange, mondayOf, parseISODate, today } from '../../lib/dates'
 import { MEAL_NAME, isChoice, mealLines } from '../../lib/logic'
 import { MEALS, type Dish, type DishCategory, type Meal, type MenuItem, type Pack, type Week } from '../../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorNote, Input, Modal, PageHeader, PageLoader, Segmented, Select, cx } from '../../components/ui'
@@ -24,12 +24,6 @@ const LINE_PRESETS: { label: string; category: DishCategory }[] = [
 ]
 const categoryFor = (label: string) => LINE_PRESETS.find((p) => p.label.toLowerCase() === label.toLowerCase())?.category
 
-const toLocalInput = (iso: string) => {
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
 export default function MenuEditor() {
   const toast = useToast()
   const [params, setParams] = useSearchParams()
@@ -45,11 +39,6 @@ export default function MenuEditor() {
   const [tab, setTab] = useState<'menu' | 'packs'>('menu')
   const [day, setDay] = useState(0)
   const [newOpen, setNewOpen] = useState(false)
-  const [deadline, setDeadline] = useState('')
-
-  useEffect(() => {
-    if (week) setDeadline(toLocalInput(week.choice_deadline))
-  }, [week])
 
   if (weeksQ.loading && !weeksQ.data) return <PageLoader />
   if (weeksQ.error) return <ErrorNote message={weeksQ.error} onRetry={weeksQ.reload} />
@@ -121,15 +110,7 @@ export default function MenuEditor() {
             </Button>
           </div>
         </div>
-        <div className="w-60">
-          <Input
-            label="Choices close"
-            type="datetime-local"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-            onBlur={() => deadline && new Date(deadline).toISOString() !== week.choice_deadline && updateWeek({ choice_deadline: new Date(deadline).toISOString() }, `Choices close ${formatDateTime(new Date(deadline).toISOString())}`)}
-          />
-        </div>
+        <p className="text-sm text-muted">Students book and change each meal up to 24 hours before it. Publish next week&rsquo;s menu a few days early so bookings that start mid-week can run into it.</p>
         <p className="text-sm text-muted"><span className="font-semibold text-ink">{chose}</span> members have chosen for this week.</p>
       </Card>
 

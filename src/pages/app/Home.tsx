@@ -6,9 +6,9 @@ import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
 import { useInView } from '../../lib/useInView'
 import { loadDishMap, loadMember, loadPublishedWeeks, loadSettings, loadWeekContent } from '../../lib/data'
-import { DURATIONS, bookingTotal, discountFor, effectiveSelection } from '../../lib/booking'
-import { addDays, currentMeal, formatDate, formatDateTime, formatWeekRange, timeUntil, today, weekdayIndex } from '../../lib/dates'
-import { MEAL_NAME, dishesFor, formatINR, isLocked, mealsLabel, memberState, subLabel, weekForDate } from '../../lib/logic'
+import { DURATIONS, bookingTotal, discountFor, effectiveSelection, firstOpenSlot } from '../../lib/booking'
+import { addDays, currentMeal, formatDate, formatWeekRange, today, weekdayIndex } from '../../lib/dates'
+import { MEAL_NAME, dishesFor, formatINR, mealsLabel, memberState, subLabel, weekForDate } from '../../lib/logic'
 import { MEALS, type Dish, type Meal, type Pack, type Settings } from '../../lib/types'
 import { PageLoader, cx } from '../../components/ui'
 import { DishImage } from '../../components/DishImage'
@@ -24,7 +24,7 @@ function useHomeData(uid: string | null) {
     const t = today()
     const [weeks, dishes, settings] = await Promise.all([loadPublishedWeeks(), loadDishMap(), loadSettings()])
     const thisWeek = weekForDate(weeks, t)
-    const openWeek = pickWeek(weeks)
+    const openWeek = pickWeek(weeks, null, settings)
     const [cur, open] = await Promise.all([
       thisWeek ? loadWeekContent(thisWeek.id) : Promise.resolve(null),
       openWeek && openWeek.id !== thisWeek?.id ? loadWeekContent(openWeek.id) : Promise.resolve(null),
@@ -261,8 +261,8 @@ function ChefStory() {
 const FAQ: [string, string][] = [
   ['Do I need an account to see the menu?', 'No. Browse every menu and even build your own. We only ask for your mobile number when you save, book or pay.'],
   ['How does building my own menu work?', 'For every meal the kitchen offers a few dishes. Add the ones you want for each day and the total updates as you go. Prices are per serving and include GST.'],
-  ['When do choices close?', 'Saturday 8 pm for the following week, so the kitchen can buy fresh and waste less.'],
-  ['Can I book for longer?', 'Yes. Book any menu for 1 week, 1 month, 3 months or 6 months. Longer bookings cost less per week, and your menu carries over each week. Change it any week before Saturday 8 pm.'],
+  ['How late can I book or change?', 'Up to 24 hours before each meal. Book today and you can start from the next meal that’s at least 24 hours away.'],
+  ['Can I book for longer?', 'Yes. Book any menu for 1 week, 1 month, 3 months or 6 months. Longer bookings cost less per week, and your menu carries over each week. Change any meal up to 24 hours before it.'],
   ['What if I go home for a few days?', 'Mark the days you’re not coming, at least 24 hours before. The full value of those meals goes to your wallet and pays for your next booking automatically.'],
   ['How do I pay?', 'By UPI: scan the QR or open your UPI app, then paste the reference number. Cash at the counter goes into your wallet.'],
 ]
@@ -284,7 +284,6 @@ export default function Home() {
   const state = member && uid ? memberState(uid, member.subs, member.payments, member.pauses) : null
   const savedCur = selections.find((s) => s.week_id === thisWeek?.id) ?? null
   const curSel = thisWeek && cur && uid && member ? effectiveSelection({ userId: uid, week: thisWeek, items: cur.items, packs: cur.packs, selection: savedCur, subs: member.subs }) : savedCur
-  const openSel = selections.find((s) => s.week_id === openWeek?.id) ?? null
   const live = servingNow(settings)
   const next = live ?? MEALS.find((m) => MEALS.indexOf(m) >= MEALS.indexOf(currentMeal())) ?? 'breakfast'
   const photoDishes = [...new Map([...dishes.values()].filter((x) => x.is_active && x.image_url).sort((a, b) => b.price - a.price).map((x) => [x.image_url, x])).values()]
@@ -309,7 +308,7 @@ export default function Home() {
               <p className="font-semibold">{state.kind === 'active' ? `${state.daysLeft} days left on your booking${state.paused ? ' · not coming today' : ''}` : state.kind === 'pending' ? 'Your payment is being checked' : state.kind === 'upcoming' ? `Your booking starts ${formatDate(state.sub.start_date)}` : 'Nothing booked yet'}</p>
               <p className="truncate text-sm text-white/55">
                 {state.kind === 'active' || state.kind === 'upcoming' ? `${subLabel(state.sub)} · ${mealsLabel(state.sub.meals)} · till ${formatDate(state.sub.end_date)}` : state.kind === 'pending' ? 'We’ll confirm it soon, usually within a few hours' : 'Pick a menu and book it for a week or longer'}
-                {openWeek && !isLocked(openWeek) && ` · ${openSel ? 'menu chosen' : 'choose your menu'} for ${formatWeekRange(openWeek.week_start)} (${timeUntil(openWeek.choice_deadline)})`}
+
               </p>
             </div>
             {state.kind === 'pending' ? (
@@ -325,7 +324,7 @@ export default function Home() {
             <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand/15 text-[#ff7a5c]"><ChefHat className="size-5" /></span>
             <span className="min-w-0 flex-1">
               <span className="block font-semibold">The menu for {formatWeekRange(openWeek.week_start)} is out</span>
-              <span className="block truncate text-sm text-white/55">{isLocked(openWeek) ? 'Choices are closed for this week' : `Choose by ${formatDateTime(openWeek.choice_deadline)} · ${timeUntil(openWeek.choice_deadline)}`}</span>
+              <span className="block truncate text-sm text-white/55">{`Book from ${(() => { const o = firstOpenSlot(settings); return `${o.date === addDays(today(), 1) ? 'tomorrow' : formatDate(o.date, { weekday: true })} ${MEAL_NAME[o.meal].toLowerCase()}` })()} · meals lock 24 h before`}</span>
             </span>
             <ArrowRight className="size-5 shrink-0 text-white/60 transition group-hover:translate-x-1" />
           </Link>
@@ -417,7 +416,7 @@ export default function Home() {
             </p>
             <p className="mt-3 text-[15px] leading-relaxed text-white/65">You pay only for what&rsquo;s on your plate, and the kitchen cooks only what&rsquo;s been chosen, so less food goes to waste.</p>
             <dl className="mt-6 grid grid-cols-3 gap-3 border-y border-white/10 py-4 text-center text-white">
-              {[['7', 'days to plan'], ['4', 'meals a day'], ['Sat 8 pm', 'choices close']].map(([v, l]) => (
+              {[['7', 'days a week'], ['4', 'meals a day'], ['24 h', 'before a meal to book']].map(([v, l]) => (
                 <div key={l}><dt className="sr-only">{l}</dt><dd className="font-display text-xl font-bold">{v}</dd><dd className="text-xs text-white/50">{l}</dd></div>
               ))}
             </dl>

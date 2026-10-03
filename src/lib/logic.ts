@@ -1,6 +1,6 @@
 // Business rules, kept free of UI and storage so both backends and every screen agree.
 import { addDays, diffDays, today, weekdayIndex } from './dates'
-import { effectiveSelection } from './booking'
+import { effectiveSelection, covers } from './booking'
 import {
   MEALS, slotKey,
   type Attendance, type CustomMenu, type Dish, type Meal, type MenuItem, type Pack, type Pause, type Payment, type Picks, type Plan,
@@ -36,7 +36,7 @@ export function pauseOn(pauses: Pause[], userId: string, date: string) {
 
 /** Is this member expected (paid, not paused) for this meal on this date? */
 export function isEligible(userId: string, date: string, meal: Meal, subs: Subscription[], pauses: Pause[]) {
-  return subs.some((s) => s.user_id === userId && s.status === 'active' && s.start_date <= date && s.end_date >= date && coversMeal(s.meals, meal)) && !pauseOn(pauses, userId, date)
+  return subs.some((s) => s.user_id === userId && covers(s, date, meal)) && !pauseOn(pauses, userId, date)
 }
 
 /** What a subscription is called on screen: its plan, its ready-made menu, or a custom menu. */

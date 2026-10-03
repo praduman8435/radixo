@@ -6,7 +6,7 @@ import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
 import { book, changeMenu, loadDishMap, loadMember, loadSettings } from '../../lib/data'
 import { addDays, formatDate, formatDateTime, today } from '../../lib/dates'
-import { DURATIONS, bookingStart, bookingTotal, choiceSlots, customMealsOf, customValue, discountFor, effectiveSelection, weekCredit, weekPaid } from '../../lib/booking'
+import { DURATIONS, bookingDates, bookingStart, bookingTotal, choiceSlots, coveredKeys, valueOver, customMealsOf, customValue, discountFor, effectiveSelection, weekCredit, weekPaid } from '../../lib/booking'
 import { MEAL_NAME, formatINR, mealsLabel, paymentLabel, subLabel } from '../../lib/logic'
 import { MEALS, type BookingSpec, type Meal, type MealMode, type MenuChoice } from '../../lib/types'
 import { ErrorNote, PageLoader, cx } from '../../components/ui'
@@ -81,10 +81,12 @@ function ChangeCheckout({ weekId }: { weekId: string }) {
   if (!uid) return <Panel className="p-5"><LoginFlow dark compact hideLogo reason="Log in to finish your menu change." /></Panel>
   if (!q.data?.week || !q.data.member || !choice) return <Empty title="Nothing to pay">Your menu change wasn’t found. Make it again from the menu.</Empty>
   const { settings, dishes, member, week, packs } = q.data
-  const value = choice.mode === 'pack' ? packs.find((p) => p.id === choice.pack_id)?.price ?? 0 : customValue(choice.custom, dishes)
   const items = q.data.items
+  const newSlots = choiceSlots(items, packs, choice)
   const current = choiceSlots(items, packs, effectiveSelection({ userId: uid, week, items, packs, selection: q.data.saved, subs: member.subs }))
-  const paid = Math.max(weekPaid(member.subs, member.payments, uid, week), customValue(current, dishes))
+  const covered = coveredKeys(member.subs, uid, week)
+  const value = valueOver(newSlots, covered, dishes)
+  const paid = Math.max(weekPaid(member.subs, member.payments, uid, week, dishes), valueOver(current, covered, dishes))
   const extra = Math.max(0, value - paid)
   const walletUsed = Math.min(Math.max(member.wallet.balance, 0), extra)
   const due = extra - walletUsed
@@ -121,7 +123,7 @@ function ChangeCheckout({ weekId }: { weekId: string }) {
           <span className="font-semibold">To pay</span>
           <span className="text-[24px] font-bold tabular">{formatINR(due)}</span>
         </div>
-        <p className="pt-1 text-xs text-white/45">Cheaper changes are free but not refunded. Meals within 48 hours can’t change.</p>
+        <p className="pt-1 text-xs text-white/45">Cheaper changes are free but not refunded. Meals within 24 hours can’t change.</p>
       </Panel>
       <Panel className="mt-4 overflow-hidden">
         {extra === 0 ? (
@@ -161,6 +163,7 @@ function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; cu
   const toast = useToast()
   const nav = useNavigate()
   const [params] = useSearchParams()
+  const [from, setFrom] = useState<string | null>(null)
   const [weeks, setWeeks] = useState<number>(() => ([1, 4, 13, 26].includes(Number(params.get('weeks'))) ? Number(params.get('weeks')) : 4))
   const [utr, setUtr] = useState('')
   const [err, setErr] = useState('')
@@ -194,7 +197,7 @@ function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; cu
   const meals: Meal[] = pack ? pack.meals : customMealsOf(custom)
   const title = pack ? pack.name : 'My Menu'
   const photo = pack ? PACK_PHOTOS[d.photoIdx % PACK_PHOTOS.length] : '/photos/served.jpg'
-  const credit = uid ? weekCredit(subs, uid, week) : 0
+  const credit = uid ? weekCredit(subs, uid, week, dishes) : 0
   const selValue = sel?.mode === 'pack' ? packs.find((p) => p.id === sel.pack_id)?.price ?? 0 : customValue(custom, dishes)
   const extraDue = Math.max(0, selValue - credit)
   const disc = isExtra ? 0 : discountFor(weeks, settings)
@@ -202,9 +205,15 @@ function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; cu
   const gross = weekly * weeks
   const walletUsed = Math.min(Math.max(balance, 0), total)
   const due = total - walletUsed
-  const start = uid ? bookingStart(subs, uid, week.week_start) : week.week_start
-  const end = addDays(start, weeks * 7 - 1)
-  const spec: BookingSpec = isExtra ? { kind: 'extra', week_id: week.id } : pack ? { kind: 'pack', pack_id: pack.id, weeks } : { kind: 'custom', week_id: week.id, weeks }
+  // Starts at the next meal 24 h+ away (after any current booking) unless a later day is picked; runs 7 × weeks days.
+  const earliest = bookingStart(subs, uid ?? '', settings)
+  const slot = bookingStart(subs, uid ?? '', settings, from)
+  const dates = bookingDates(slot, weeks)
+  const start = dates.start_date
+  const end = dates.end_date
+  const lastMeal = slot.meal === 'breakfast' ? null : MEALS[MEALS.indexOf(slot.meal) - 1]
+  const startOptions = [earliest.date, ...[1, 2, 3, 4, 5, 6].map((i) => addDays(earliest.date, i))]
+  const spec: BookingSpec = isExtra ? { kind: 'extra', week_id: week.id } : pack ? { kind: 'pack', pack_id: pack.id, weeks, start_date: start } : { kind: 'custom', week_id: week.id, weeks, start_date: start }
 
   if (done) {
     return (
@@ -267,7 +276,20 @@ function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; cu
         </Panel>
       ) : (
         <>
-          <p className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">How long?</p>
+          <p className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Start from</p>
+          <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="radiogroup" aria-label="Start day">
+            {startOptions.map((dte, i) => {
+              const on = dte === start
+              return (
+                <button key={dte} type="button" role="radio" aria-checked={on} onClick={() => setFrom(i === 0 ? null : dte)} className={cx('shrink-0 rounded-xl px-3.5 py-2 text-left ring-1 transition', on ? 'bg-brand/15 ring-2 ring-brand' : 'bg-white/[0.04] ring-white/10 hover:bg-white/[0.07]')}>
+                  <span className="block text-sm font-semibold">{dte === today() ? 'Today' : dte === addDays(today(), 1) ? 'Tomorrow' : formatDate(dte, { weekday: true })}</span>
+                  <span className="block text-[11px] text-white/50">{i === 0 && earliest.meal !== 'breakfast' ? `from ${MEAL_NAME[earliest.meal].toLowerCase()}` : 'from breakfast'}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <p className="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">How long?</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Duration">
             {DURATIONS.map((o) => {
               const dd = discountFor(o.weeks, settings)
@@ -284,10 +306,10 @@ function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; cu
             })}
           </div>
           <Panel className="mt-4 space-y-2 p-4 text-sm">
-            <p className="flex items-center gap-2 pb-1 text-white/70"><CalendarDays className="size-4" /> {formatDate(start, { weekday: true })} → {formatDate(end, { weekday: true, year: true })}</p>
+            <p className="flex items-center gap-2 pb-1 text-white/70"><CalendarDays className="size-4 shrink-0" /> {formatDate(start, { weekday: true })}{slot.meal !== 'breakfast' ? ` ${MEAL_NAME[slot.meal].toLowerCase()}` : ''} → {formatDate(end, { weekday: true, year: true })}{lastMeal ? ` ${MEAL_NAME[lastMeal].toLowerCase()}` : ''}</p>
             <Row label={`${formatINR(weekly)} × ${weeks} week${weeks > 1 ? 's' : ''}`} value={formatINR(gross)} />
             {disc > 0 && <Row label={`${disc}% off`} value={`− ${formatINR(gross - total)}`} accent />}
-            <p className="pt-1 text-xs text-white/45">Your menu carries over each week. Change any meal up to 48 hours before it; you only pay if the new menu costs more.</p>
+            <p className="pt-1 text-xs text-white/45">Exactly 7 days of meals per week booked. Your menu carries over each week; change any meal up to 24 hours before it and pay only if the new menu costs more.</p>
           </Panel>
         </>
       )}

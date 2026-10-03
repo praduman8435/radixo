@@ -4,8 +4,9 @@ import { ArrowLeft, Check, Lock, Pencil } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { useAsync } from '../../../lib/useAsync'
 import { changeMenu, loadSettings } from '../../../lib/data'
+import { weekOpen } from '../../../lib/booking'
 import { DAY_NAMES, addDays, formatDate, formatWeekRange, mondayOf, today, weekdayIndex } from '../../../lib/dates'
-import { MEAL_NAME, customCount, customMeals, customTotal, dishesFor, formatINR, isLocked, mealsLabel } from '../../../lib/logic'
+import { MEAL_NAME, customCount, customMeals, customTotal, dishesFor, formatINR, mealsLabel } from '../../../lib/logic'
 import { MEALS, type Dish, type Meal, type Selection, type Settings } from '../../../lib/types'
 import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { DishImage } from '../../../components/DishImage'
@@ -59,7 +60,7 @@ export default function MenuView() {
   const covered = booked && price <= credit
   const due = booked ? Math.max(0, price - credit) : price
   const savedCustom = q.data!.saved?.mode === 'custom'
-  const locked = isLocked(week) && !booked
+  const locked = !booked && !weekOpen(week, q.data!.settings)
   const selected = !!pack && selection?.mode === 'pack' && selection.pack_id === pack.id
   const photoPack = pack ?? mineIsPack
   const photo = photoPack ? PACK_PHOTOS[Math.max(0, bookable.indexOf(photoPack)) % PACK_PHOTOS.length] : '/photos/served.jpg'
@@ -228,7 +229,7 @@ export default function MenuView() {
               <span className="text-xs text-white/50">{booked ? (due === 0 ? 'included in your booking' : 'extra this week') : '/ week'}</span>
             </p>
             <p className="truncate text-xs text-white/50">
-              {locked ? <span className="inline-flex items-center gap-1"><Lock className="size-3" /> Choices closed for this week</span> : booked && due === 0 ? <span className="inline-flex items-center gap-1 text-[#34c759]">{mealsLabel(meals)} covered</span> : `${mealsLabel(meals)} · 7 days`}
+              {locked ? <span className="inline-flex items-center gap-1"><Lock className="size-3" /> This week is over</span> : booked && due === 0 ? <span className="inline-flex items-center gap-1 text-[#34c759]">{mealsLabel(meals)} covered</span> : `${mealsLabel(meals)} · 7 days`}
             </p>
           </div>
           <button type="button" onClick={act} disabled={busy || selected} className="bg-brand-grad inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-5 text-[15px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60">

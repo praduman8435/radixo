@@ -1,12 +1,12 @@
 // Demo versions of the server functions in supabase/migrations/002_bookings_wallet.sql (same rules, in memory).
-import { addDays, diffDays, formatDate, mondayOf } from '../dates'
-import { bookingTotal, changedSlots, choiceSlots, customMealsOf, customValue, dayValue, discountFor, effectiveSelection, skipAllowed, slotLocked, weekPaid } from '../booking'
+import { addDays, diffDays, formatDate } from '../dates'
+import { bookingDates, bookingStart, bookingTotal, changedSlots, coveredKeys, valueOver, choiceSlots, customMealsOf, customValue, dayValue, discountFor, effectiveSelection, skipAllowed, slotLocked, weekPaid } from '../booking'
 import { DAY_NAMES } from '../dates'
 import type { CustomMenu, Dish, Meal, MenuChoice, Payment, Pause, Subscription, Tables, TableName, Week } from '../types'
 
 interface BookingQuote {
   kind: 'pack' | 'custom'; week_id: string; source: 'pack' | 'custom'; pack_id: string | null; pack_name: string; template: CustomMenu; meals: Meal[]
-  weeks: number; weekly_price: number; discount_pct: number; start_date: string; end_date: string; total: number; label: string
+  weeks: number; weekly_price: number; discount_pct: number; start_date: string; start_meal: Meal; end_date: string; total: number; label: string
 }
 interface ExtraQuote { kind: 'extra'; week_id: string; total: number; label: string }
 
@@ -43,12 +43,11 @@ function quote(db: DB, uid: string, spec: Record<string, unknown>): BookingQuote
   } else throw new Error('Unknown booking')
   if (!week) throw new Error('That week isn’t open')
   const disc = discountFor(weeks, s)
-  const lastEnd = t.subscriptions.filter((b) => b.user_id === uid && b.status === 'active' && b.end_date >= week!.week_start).reduce<string | null>((m, b) => (!m || b.end_date > m ? b.end_date : m), null)
-  const start = lastEnd ? mondayOf(addDays(lastEnd, 7)) : week.week_start
-  if (start === week.week_start && new Date(week.choice_deadline).getTime() <= Date.now()) throw new Error('Choices for this week are closed. Book from next week.')
+  // Starts at the first meal 24 h+ away, after any current booking, or on a later chosen day; runs 7 × weeks days.
+  const dates = bookingDates(bookingStart(t.subscriptions, uid, s, typeof spec.start_date === 'string' ? spec.start_date : null), weeks)
   return {
     kind: kind as 'pack' | 'custom', week_id: week.id, source, pack_id: packId, pack_name: name, template, meals, weeks, weekly_price: weekly, discount_pct: disc,
-    start_date: start, end_date: addDays(start, weeks * 7 - 1), total: bookingTotal(weekly, weeks, disc), label: `${name} · ${durationLabel(weeks)}`,
+    ...dates, total: bookingTotal(weekly, weeks, disc), label: `${name} · ${durationLabel(weeks)}`,
   }
 }
 
@@ -57,7 +56,7 @@ const balance = (db: DB, uid: string) => db.tables.wallet_txns.filter((x) => x.u
 function createBooking(db: DB, uid: string, q: BookingQuote | ExtraQuote, paymentId: string) {
   if (q.kind === 'extra') return
   const sub: Subscription = {
-    id: uuid(), user_id: uid, plan_id: null, pack_id: q.pack_id, payment_id: paymentId, start_date: q.start_date, end_date: q.end_date, meals: q.meals,
+    id: uuid(), user_id: uid, plan_id: null, pack_id: q.pack_id, payment_id: paymentId, start_date: q.start_date, start_meal: q.start_meal, end_date: q.end_date, meals: q.meals,
     status: 'active', source: q.source, pack_name: q.pack_name, template: q.template, weeks: q.weeks, weekly_price: q.weekly_price, discount_pct: q.discount_pct, created_at: now(),
   }
   db.tables.subscriptions.push(sub)
@@ -131,10 +130,11 @@ export function runLocalRpc(db: DB, fn: string, args: Record<string, unknown>): 
     for (let i = 0; i <= diffDays(start, end); i++) {
       const d = addDays(start, i)
       if (t.pauses.some((p) => p.user_id === uid && p.status === 'approved' && p.start_date <= d && p.end_date >= d)) continue
-      const b = t.subscriptions.filter((x) => x.user_id === uid && x.status === 'active' && x.source !== 'plan' && x.start_date <= d && x.end_date >= d).sort((a, z) => (a.created_at < z.created_at ? 1 : -1))[0]
-      if (!b) continue
-      credit += dayValue(b, d, dishes)
-      first ??= b.id
+      // A day can be split between two bookings (one ends at lunch, the next starts): count each one's meals.
+      for (const b of t.subscriptions.filter((x) => x.user_id === uid && x.status === 'active' && x.source !== 'plan' && x.start_date <= d && x.end_date >= d)) {
+        const v = dayValue(b, d, dishes)
+        if (v > 0) { credit += v; first ??= b.id }
+      }
     }
     if (!first || Math.round(credit) <= 0) throw new Error('You have no booked meals on those days')
     const r: Pause = { id: uuid(), user_id: uid, subscription_id: first, credit: Math.round(credit), start_date: start, end_date: end, reason: String(args.p_reason ?? ''), status: 'approved', created_at: now() }
@@ -155,7 +155,7 @@ export function runLocalRpc(db: DB, fn: string, args: Record<string, unknown>): 
   if (fn === 'change_menu') {
     const week = t.weeks.find((w) => w.id === args.p_week && w.status === 'published')
     if (!week) throw new Error('That week isn’t open')
-    if (!t.subscriptions.some((b) => b.user_id === uid && b.status === 'active' && b.start_date <= week.week_start && b.end_date >= week.week_start)) throw new Error('Book a menu for this week first')
+    if (!t.subscriptions.some((b) => b.user_id === uid && b.status === 'active' && b.start_date <= addDays(week.week_start, 6) && b.end_date >= week.week_start)) throw new Error('Book a menu for this week first')
     const sel = args.p_sel as MenuChoice
     const dishes = Object.fromEntries(t.dishes.map((d) => [d.id, d])) as Record<string, Dish>
     const items = t.menu_items.filter((i) => i.week_id === week.id)
@@ -171,12 +171,14 @@ export function runLocalRpc(db: DB, fn: string, args: Record<string, unknown>): 
     }
     for (const k of changedSlots(oldSlots, newSlots)) {
       const [d, m] = k.split('-')
-      if (slotLocked(week.week_start, Number(d), m as Meal, s)) throw new Error(`Meals starting within 48 hours can’t be changed (${m[0].toUpperCase() + m.slice(1)} on ${DAY_NAMES[Number(d)].slice(0, 3)})`)
+      if (slotLocked(week.week_start, Number(d), m as Meal, s)) throw new Error(`Meals starting within 24 hours can’t be changed (${m[0].toUpperCase() + m.slice(1)} on ${DAY_NAMES[Number(d)].slice(0, 3)})`)
     }
-    const value = sel.mode === 'pack' ? packs.find((p) => p.id === sel.pack_id)?.price : customValue(sel.custom, dishes)
-    if (value === undefined) throw new Error('That menu isn’t available')
+    if (sel.mode === 'pack' && !packs.some((p) => p.id === sel.pack_id)) throw new Error('That menu isn’t available')
+    // Only meals inside the booking count: the new menu's value there, against what's paid or the current menu's value.
+    const covered = coveredKeys(t.subscriptions, uid, week)
+    const value = valueOver(newSlots, covered, dishes)
     // Pay only the difference from the menu they have now (a ready-made menu can be worth more than its price).
-    const extra = Math.max(0, value - Math.max(weekPaid(t.subscriptions, t.payments, uid, week), customValue(oldSlots, dishes)))
+    const extra = Math.max(0, value - Math.max(weekPaid(t.subscriptions, t.payments, uid, week, dishes), valueOver(oldSlots, covered, dishes)))
     if (t.payments.some((p) => p.user_id === uid && p.week_id === week.id && p.status === 'pending' && p.details?.kind === 'change')) throw new Error('Your last menu change is waiting for its payment check. You can change again once it’s confirmed.')
     if (extra === 0) { applySelection(db, uid, week.id, sel); return { applied: true, extra: 0 } }
     const used = Math.min(Math.max(balance(db, uid), 0), extra)

@@ -8,7 +8,7 @@ A web app for running Radixo student mess outlets. Students pick a ready-made we
 - **Home:** live "serving now" status, today's meals, ready-made weeks, the "build your own" story, booking lengths with their discounts, the chef story, timings with directions, FAQ
 - **Menus:** a swipe deck of ready-made weekly menus (each with its own price), or **build your own**: day by day, add dishes for breakfast, lunch, snacks and dinner from the kitchen's options, with a live total. Eat 4 days a week or 7, at any budget
 - **Login only when needed** (saving or booking a menu, paying, profile): mobile number → OTP → name. With `VITE_OTP_REQUIRED=false` (the default) the code isn't checked and can be skipped
-- **Booking:** any menu for 1 week, 1 month, 3 months or 6 months (default 0 / 5 / 8 / 12% off, set in Settings). The price is locked for the whole booking and the menu carries over each week (a ready-made menu by name; a custom menu keeps its dishes where still served, else the kitchen's default). Students can change the menu any week before the deadline; a costlier week is paid as an "extra", a cheaper one isn't refunded
+- **Booking:** any menu for 1 week, 1 month, 3 months or 6 months (default 0 / 5 / 8 / 12% off, set in Settings), starting from the next meal at least 24 hours away (or a later day the student picks). A booking covers exactly 7 days of meals per week booked, so a start on Thursday lunch ends with the next Thursday's breakfast. The price is locked and the menu carries over each week. Any meal can be changed up to 24 hours before it; a costlier change is paid first, a cheaper one isn't refunded. There is no weekly deadline
 - **Not coming:** mark a date range at least 24 hours before (counted to midnight India time). The full value of those booked meals goes to the **wallet** and is used automatically on the next booking. Undo is allowed under the same notice
 - **Wallet:** balance, bookings, payments being checked, wallet history, and UPI checkout (QR, UPI app link, 12-digit UTR). If the wallet covers the whole booking it's confirmed at once
 - **Profile:** meal pass QR, today's plate, the week's menu, "not coming", payments, profile details
@@ -37,7 +37,7 @@ Open http://localhost:5173. With no Supabase keys the app runs in **demo mode**:
 ## Go live with Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor**, paste `supabase/schema.sql`, and run it. Then run `supabase/migrations/002_bookings_wallet.sql` the same way. Together they create the tables, row-level security, the booking and wallet functions, and starter dishes. Both are safe to run again.
+2. Open **SQL Editor**, paste `supabase/schema.sql`, and run it. Then run the files in `supabase/migrations/` (002, 003, 004, 005) in order, the same way. Together they create the tables, row-level security, the booking and wallet functions, and starter dishes. Both are safe to run again.
 3. Copy `.env.example` to `.env.local` and fill in **Project Settings → API**: the project URL and the `anon` public key.
 4. Turn off "Confirm email" (Authentication → Providers → Email). Open the app, log in once as a student with your number, then in the SQL editor make that account the owner and give it a password:
    ```sql

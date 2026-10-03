@@ -338,7 +338,7 @@ export function createSeed(): DemoDB {
     payments.push(p)
     if (status !== 'approved') return p
     subscriptions.push({
-      id: `sub-${uid}-${start}`, user_id: uid, plan_id: null, pack_id: details.pack_id, payment_id: p.id, start_date: start, end_date: details.end_date,
+      id: `sub-${uid}-${start}`, user_id: uid, plan_id: null, pack_id: details.pack_id, payment_id: p.id, start_date: start, start_meal: 'breakfast', end_date: details.end_date,
       meals: [...details.meals], status: 'active', source: details.source, pack_name: details.pack_name, template: details.template, weeks, weekly_price: weekly,
       discount_pct: details.discount_pct, created_at: p.created_at,
     })
