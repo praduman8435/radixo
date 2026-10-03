@@ -2,14 +2,14 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointer
 import { Link, useNavigate } from 'react-router'
 import { Plus, Check, ChevronRight, Clock3, Eye, Lock, RotateCcw, X } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
-import { savePicks } from '../../../lib/data'
+import { changeMenu } from '../../../lib/data'
 import { formatDateTime, formatWeekRange, mondayOf, timeUntil, today, weekdayIndex } from '../../../lib/dates'
 import { MEAL_NAME, customCount, customMeals, customTotal, dishesFor, formatINR, isLocked, mealsLabel } from '../../../lib/logic'
 import { MEALS, type Dish, type Meal, type MenuItem, type Pack, type Selection } from '../../../lib/types'
 import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { useToast } from '../../../components/toast'
 import { useLoginGate } from '../../../components/LoginSheet'
-import { readDraft, useMenuData } from './useMenuData'
+import { readDraft, stashChange, useMenuData } from './useMenuData'
 
 const PACK_PHOTOS = ['/photos/thali-classic.jpg', '/photos/thali-fullday.jpg', '/photos/thali-protein.jpg', '/photos/thali-light.jpg']
 const SWIPE_AT = 100 // px of drag that counts as a swipe
@@ -61,9 +61,9 @@ export default function MenuHome() {
 
   const data = q.data
   const week = data?.week
-  const locked = week ? isLocked(week) : true
+  const locked = week ? isLocked(week) && !data?.booked : true
   const credit = data?.credit ?? 0
-  const booked = credit > 0 // this week is already paid for by a booking
+  const booked = !!data?.booked // this week is already paid for by a booking
   const thisWeek = !!week && week.week_start === mondayOf(today())
   const previewDay = thisWeek ? weekdayIndex(today()) : 0
 
@@ -93,7 +93,7 @@ export default function MenuHome() {
       if (locked) return nav('/menu/view/mine')
       if (!data?.saved || data.saved.mode !== 'custom') return nav('/menu/create') // still a draft: save it first
       if (!booked) return nav(`/wallet?custom=${week.id}`)
-      return c.due > 0 ? nav(`/wallet?extra=${week.id}`) : nav('/menu/view/mine')
+      return c.due > 0 ? nav(`/menu/create?week=${week.id}`) : nav('/menu/view/mine')
     }
     if (locked) return nav(`/menu/view/${c.pack.id}`)
     if (!booked) return nav(`/wallet?pack=${c.pack.id}`)
@@ -101,9 +101,13 @@ export default function MenuHome() {
     const save = async () => {
       setBusy(true)
       try {
-        await savePicks(uid!, week.id, 'pack', c.pack.id, c.pack.picks)
-        if (c.pack.price > credit) nav(`/wallet?extra=${week.id}`)
-        else toast(`${c.title} is your menu for ${formatWeekRange(week.week_start)}`)
+        const choice = { mode: 'pack' as const, pack_id: c.pack.id, picks: c.pack.picks, custom: {} }
+        if (c.pack.price > credit) {
+          stashChange(week.id, choice)
+          return nav(`/wallet?change=${week.id}`)
+        }
+        await changeMenu(week.id, choice)
+        toast(`${c.title} is your menu for ${formatWeekRange(week.week_start)}`)
         q.reload()
       } catch (e) {
         toast(e instanceof Error ? e.message : 'Could not save', 'error')

@@ -129,7 +129,7 @@ export function Spinner({ className }: { className?: string }) {
 
 export function PageLoader() {
   return (
-    <div className="flex min-h-[40vh] items-center justify-center">
+    <div className="flex min-h-[60vh] items-center justify-center">
       <Spinner />
     </div>
   )

@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Printer, Info } from 'lucide-react'
+import { Printer, Info, Package } from 'lucide-react'
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
 import { loadOps } from '../../lib/admin'
 import { loadDishMap } from '../../lib/data'
 import { addDays, currentMeal, formatDate, today } from '../../lib/dates'
-import { isChoice, prepSheet, weekForDate, MEAL_OPTIONS } from '../../lib/logic'
+import { dishesFor, isChoice, isEligible, prepSheet, weekForDate, MEAL_OPTIONS } from '../../lib/logic'
+import { effectiveSelection } from '../../lib/booking'
+import { formatPhone } from '../../lib/phone'
 import type { Meal } from '../../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorNote, Input, PageHeader, PageLoader, Segmented } from '../../components/ui'
 
@@ -24,6 +26,18 @@ export default function Prep() {
   if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
   const { ops, dishes, week, items } = q.data!
   const sheet = prepSheet({ date, meal, week, items, selections: ops.selections, subs: ops.subs, pauses: ops.pauses, attendance: ops.attendance, settings: ops.settings, packs: ops.packs })
+  // Tiffins to pack: members on tiffin who are booked for this meal, with what goes in each box.
+  const tiffins = week
+    ? ops.profiles
+        .filter((p) => p.role === 'student' && p.meal_mode === 'tiffin' && isEligible(p.id, date, meal, ops.subs, ops.pauses))
+        .map((p) => {
+          const saved = ops.selections.find((x) => x.user_id === p.id && x.week_id === week.id)
+          const sel = effectiveSelection({ userId: p.id, week, items, packs: ops.packs.filter((x) => x.week_id === week.id), selection: saved, subs: ops.subs })
+          const day = Math.round((new Date(date).getTime() - new Date(week.week_start).getTime()) / 86_400_000)
+          return { p, dishNames: dishesFor(items, day, meal, sel).map((id) => dishes.get(id)?.name).filter(Boolean) as string[] }
+        })
+        .filter((t) => t.dishNames.length)
+    : []
   const chose = week ? new Set(ops.selections.filter((s) => s.week_id === week.id).map((s) => s.user_id)) : new Set<string>()
 
   return (
@@ -82,6 +96,30 @@ export default function Prep() {
                   </tr>
                 )),
               )}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
+      {tiffins.length > 0 && (
+        <Card className="mt-5 overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+            <Package className="size-4 text-brand" />
+            <h3 className="font-display text-lg font-bold">Tiffins to pack · {tiffins.length}</h3>
+            <span className="ml-auto text-xs text-muted">Included in the portions above · no delivery charge</span>
+          </div>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-sand/70 text-xs uppercase tracking-wide text-muted">
+              <tr><th className="px-4 py-2 font-semibold">Member</th><th className="px-4 py-2 font-semibold">Deliver to</th><th className="px-4 py-2 font-semibold">In the box</th></tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {tiffins.map(({ p, dishNames }) => (
+                <tr key={p.id}>
+                  <td className="px-4 py-2.5 align-top"><p className="font-semibold">{p.full_name}</p><p className="text-xs text-muted">{p.member_code} · {formatPhone(p.phone)}</p></td>
+                  <td className="px-4 py-2.5 align-top">{p.address || <span className="text-brand">No address yet</span>}</td>
+                  <td className="px-4 py-2.5 align-top text-muted">{dishNames.join(', ')}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </Card>

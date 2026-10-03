@@ -17,8 +17,16 @@ export interface Profile {
   area: string
   role: Role
   member_code: string
+  /** 'tiffin' = packed and delivered at the same price; 'dine' = eats at the mess. */
+  meal_mode: MealMode
+  address: string
   created_at: string
 }
+
+export type MealMode = 'dine' | 'tiffin'
+
+/** A menu choice for one week, as sent to change_menu. */
+export type MenuChoice = { mode: 'custom' | 'pack'; pack_id: string | null; picks: Record<string, string>; custom: CustomMenu }
 
 export type DishCategory = 'breakfast' | 'snack' | 'drink' | 'dal' | 'sabzi' | 'rice' | 'bread' | 'special' | 'sweet' | 'side'
 
@@ -106,7 +114,7 @@ export interface Payment {
   week_id: string | null // the week a menu booking (ready-made or custom) is for
   amount: number // ₹ to pay by UPI/cash (after wallet)
   wallet_used: number // ₹ taken from the wallet for this payment
-  details: (Partial<Subscription> & { kind?: 'pack' | 'custom' | 'extra'; total?: number; label?: string }) | null
+  details: (Partial<Subscription> & { kind?: 'pack' | 'custom' | 'extra' | 'change'; total?: number; label?: string; sel?: MenuChoice }) | null
   method: 'upi' | 'cash' | 'wallet'
   utr: string
   status: PaymentStatus

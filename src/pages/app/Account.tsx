@@ -11,6 +11,7 @@ import { formatINR, paymentLabel } from '../../lib/logic'
 import type { StayType } from '../../lib/types'
 import { cx } from '../../components/ui'
 import { useToast } from '../../components/toast'
+import { MealModePicker } from '../../components/MealModePicker'
 
 const Panel = ({ children, className, id }: { children: ReactNode; className?: string; id?: string }) => <section id={id} className={cx('scroll-mt-24 rounded-2xl bg-white/[0.04] p-5 ring-1 ring-white/10', className)}>{children}</section>
 const field = 'h-11 w-full rounded-xl bg-white/[0.06] px-4 text-[15px] text-white outline-none ring-1 ring-white/12 placeholder:text-white/30 focus:ring-2 focus:ring-brand focus-visible:outline-none [color-scheme:dark]'
@@ -27,7 +28,7 @@ export function AccountSettings() {
     return { member, dishes }
   }, [p.id])
 
-  const [form, setForm] = useState({ full_name: p.full_name, phone: p.phone, year: p.year, stay_type: p.stay_type, area: p.area })
+  const [form, setForm] = useState({ full_name: p.full_name, phone: p.phone, year: p.year, stay_type: p.stay_type, area: p.area, meal_mode: p.meal_mode ?? 'dine', address: p.address ?? '' })
   const [savingProfile, setSavingProfile] = useState(false)
   const [skip, setSkip] = useState({ start: addDays(today(), 2), end: addDays(today(), 3), reason: '' })
   const [skipErr, setSkipErr] = useState('')
@@ -176,6 +177,10 @@ export function AccountSettings() {
             </div>
           </div>
           <div><label className={label} htmlFor="pf-area">PG name / area</label><input id="pf-area" className={field} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} /></div>
+          <div>
+            <p className={label}>How you get your meals</p>
+            <MealModePicker mode={form.meal_mode} address={form.address} onMode={(m) => setForm({ ...form, meal_mode: m })} onAddress={(v) => setForm({ ...form, address: v })} />
+          </div>
           <button type="submit" disabled={savingProfile} className="h-10 rounded-full bg-white px-5 text-sm font-semibold text-ink disabled:opacity-60">{savingProfile ? 'Saving…' : 'Save details'}</button>
         </form>
       </Panel>

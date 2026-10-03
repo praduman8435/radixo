@@ -1,7 +1,8 @@
 // Demo versions of the server functions in supabase/migrations/002_bookings_wallet.sql (same rules, in memory).
 import { addDays, diffDays, formatDate, mondayOf } from '../dates'
-import { bookingTotal, customMealsOf, customValue, dayValue, discountFor, skipAllowed } from '../booking'
-import type { CustomMenu, Dish, Meal, Payment, Pause, Subscription, Tables, TableName, Week } from '../types'
+import { bookingTotal, changedSlots, choiceSlots, customMealsOf, customValue, dayValue, discountFor, effectiveSelection, skipAllowed, slotLocked, weekPaid } from '../booking'
+import { DAY_NAMES } from '../dates'
+import type { CustomMenu, Dish, Meal, MenuChoice, Payment, Pause, Subscription, Tables, TableName, Week } from '../types'
 
 interface BookingQuote {
   kind: 'pack' | 'custom'; week_id: string; source: 'pack' | 'custom'; pack_id: string | null; pack_name: string; template: CustomMenu; meals: Meal[]
@@ -69,6 +70,14 @@ function createBooking(db: DB, uid: string, q: BookingQuote | ExtraQuote, paymen
   }
 }
 
+function applySelection(db: DB, uid: string, weekId: string, sel: MenuChoice) {
+  const t = db.tables
+  const i = t.selections.findIndex((x) => x.user_id === uid && x.week_id === weekId)
+  const row = { id: i >= 0 ? t.selections[i].id : uuid(), user_id: uid, week_id: weekId, mode: sel.mode, pack_id: sel.pack_id, picks: sel.picks ?? {}, custom: sel.custom ?? {}, updated_at: now() }
+  if (i >= 0) t.selections[i] = row
+  else t.selections.push(row)
+}
+
 const isAdmin = (db: DB) => db.tables.profiles.find((p) => p.id === db.session)?.role === 'admin'
 
 export function runLocalRpc(db: DB, fn: string, args: Record<string, unknown>): unknown {
@@ -102,6 +111,7 @@ export function runLocalRpc(db: DB, fn: string, args: Record<string, unknown>): 
     if (!pay) throw new Error('Payment not found or already reviewed')
     if (fn === 'approve_payment') {
       if (pay.details && (pay.details.kind === 'pack' || pay.details.kind === 'custom')) createBooking(db, pay.user_id, pay.details as unknown as BookingQuote, pay.id)
+      if (pay.details?.kind === 'change' && pay.details.sel && pay.week_id) applySelection(db, pay.user_id, pay.week_id, pay.details.sel)
       Object.assign(pay, { status: 'approved', admin_note: String(args.p_note ?? ''), reviewed_at: now() })
     } else {
       if (pay.wallet_used > 0) t.wallet_txns.push({ id: uuid(), user_id: pay.user_id, amount: pay.wallet_used, kind: 'refund', note: 'Payment rejected', ref_id: pay.id, created_at: now() })
@@ -140,6 +150,50 @@ export function runLocalRpc(db: DB, fn: string, args: Record<string, unknown>): 
     r.status = 'cancelled'
     t.wallet_txns.push({ id: uuid(), user_id: uid, amount: -r.credit, kind: 'skip_cancelled', note: 'Coming after all', ref_id: r.id, created_at: now() })
     return r
+  }
+
+  if (fn === 'change_menu') {
+    const week = t.weeks.find((w) => w.id === args.p_week && w.status === 'published')
+    if (!week) throw new Error('That week isn’t open')
+    if (!t.subscriptions.some((b) => b.user_id === uid && b.status === 'active' && b.start_date <= week.week_start && b.end_date >= week.week_start)) throw new Error('Book a menu for this week first')
+    const sel = args.p_sel as MenuChoice
+    const dishes = Object.fromEntries(t.dishes.map((d) => [d.id, d])) as Record<string, Dish>
+    const items = t.menu_items.filter((i) => i.week_id === week.id)
+    const packs = t.packs.filter((p) => p.week_id === week.id)
+    const saved = t.selections.find((x) => x.user_id === uid && x.week_id === week.id)
+    const oldSlots = choiceSlots(items, packs, effectiveSelection({ userId: uid, week, items, packs, selection: saved, subs: t.subscriptions }))
+    const newSlots = choiceSlots(items, packs, sel)
+    if (!Object.keys(newSlots).length) throw new Error('Add some dishes first')
+    for (const [k, ids] of Object.entries(newSlots)) {
+      const [d, m] = k.split('-')
+      const offered = items.filter((i) => i.day === Number(d) && i.meal === m).flatMap((i) => i.dish_ids)
+      if (ids.some((id) => !offered.includes(id))) throw new Error('Some dishes aren’t on that day’s menu')
+    }
+    for (const k of changedSlots(oldSlots, newSlots)) {
+      const [d, m] = k.split('-')
+      if (slotLocked(week.week_start, Number(d), m as Meal, s)) throw new Error(`Meals starting within 48 hours can’t be changed (${m[0].toUpperCase() + m.slice(1)} on ${DAY_NAMES[Number(d)].slice(0, 3)})`)
+    }
+    const value = sel.mode === 'pack' ? packs.find((p) => p.id === sel.pack_id)?.price : customValue(sel.custom, dishes)
+    if (value === undefined) throw new Error('That menu isn’t available')
+    // Pay only the difference from the menu they have now (a ready-made menu can be worth more than its price).
+    const extra = Math.max(0, value - Math.max(weekPaid(t.subscriptions, t.payments, uid, week), customValue(oldSlots, dishes)))
+    if (t.payments.some((p) => p.user_id === uid && p.week_id === week.id && p.status === 'pending' && p.details?.kind === 'change')) throw new Error('Your last menu change is waiting for its payment check. You can change again once it’s confirmed.')
+    if (extra === 0) { applySelection(db, uid, week.id, sel); return { applied: true, extra: 0 } }
+    const used = Math.min(Math.max(balance(db, uid), 0), extra)
+    const due = extra - used
+    const utr = String(args.p_utr ?? '').trim()
+    if (due > 0 && !/^\d{12}$/.test(utr)) throw new Error('Enter the 12-digit UPI reference')
+    if (due > 0 && t.payments.some((p) => p.utr === utr)) throw new Error('duplicate key value violates unique constraint "payments_utr_unique"')
+    const label = `Menu change · week of ${formatDate(week.week_start)}`
+    const pay: Payment = {
+      id: uuid(), user_id: uid, plan_id: null, pack_id: null, week_id: week.id, amount: due, wallet_used: used, method: due === 0 ? 'wallet' : 'upi', utr: due === 0 ? '' : utr,
+      status: due === 0 ? 'approved' : 'pending', admin_note: due === 0 ? 'Paid from wallet' : '', details: { kind: 'change', week_id: week.id, sel, total: extra, label } as Payment['details'],
+      created_at: now(), reviewed_at: due === 0 ? now() : null,
+    }
+    t.payments.push(pay)
+    if (used > 0) t.wallet_txns.push({ id: uuid(), user_id: uid, amount: -used, kind: 'payment', note: label, ref_id: pay.id, created_at: now() })
+    if (due === 0) applySelection(db, uid, week.id, sel)
+    return { applied: due === 0, extra, payment: pay }
   }
 
   if (fn === 'set_team_password') {

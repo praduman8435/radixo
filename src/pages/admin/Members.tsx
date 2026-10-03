@@ -60,8 +60,8 @@ export default function Members() {
   const packName = (id: string | null) => ops.packs.find((x) => x.id === id)?.name ?? 'Ready-made'
 
   function exportCsv() {
-    const lines = [['Name', 'Code', 'Phone', 'Email', 'Role', 'Stay', 'Area', 'Status', 'Booked till', 'Wallet']]
-    for (const { p, s: st } of shown) lines.push([p.full_name, p.member_code, p.phone, p.email, p.role, p.stay_type, p.area, st.kind, 'sub' in st ? st.sub.end_date : '', String(ops.walletOf(p.id))])
+    const lines = [['Name', 'Code', 'Phone', 'Email', 'Role', 'Stay', 'Area', 'Status', 'Booked till', 'Wallet', 'Meals', 'Address']]
+    for (const { p, s: st } of shown) lines.push([p.full_name, p.member_code, p.phone, p.email, p.role, p.stay_type, p.area, st.kind, 'sub' in st ? st.sub.end_date : '', String(ops.walletOf(p.id)), p.meal_mode === 'tiffin' ? 'Tiffin' : 'At the mess', p.address ?? ''])
     const csv = lines.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -103,7 +103,7 @@ export default function Members() {
                     <div className="flex items-center gap-3">
                       <Avatar name={p.full_name} className="size-8 text-xs" />
                       <div>
-                        <p className="font-semibold">{p.full_name} {p.role !== 'student' && <Badge tone="brand" className="ml-1 capitalize">{p.role}</Badge>}</p>
+                        <p className="font-semibold">{p.full_name} {p.role !== 'student' && <Badge tone="brand" className="ml-1 capitalize">{p.role}</Badge>}{p.meal_mode === 'tiffin' && <Badge tone="amber" className="ml-1">Tiffin</Badge>}</p>
                         <p className="font-mono text-xs text-muted">{p.member_code}</p>
                       </div>
                     </div>
@@ -159,6 +159,7 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
             <p className="font-mono text-sm font-semibold text-brand">{profile.member_code}</p>
             <p className="text-sm text-muted">{profile.email} · {profile.phone}</p>
             <p className="text-sm text-muted">{[profile.year, profile.stay_type, profile.area, profile.college].filter(Boolean).join(' · ')}</p>
+            {profile.meal_mode === 'tiffin' && <p className="mt-0.5 text-sm"><Badge tone="amber">Tiffin</Badge> <span className="text-muted">{profile.address || 'No delivery address yet'}</span></p>}
           </div>
           {stateBadge(st)}
           {profile.phone && (

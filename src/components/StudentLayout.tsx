@@ -73,7 +73,7 @@ export function StudentLayout() {
   )
 
   return (
-    <div className="min-h-dvh overflow-x-clip bg-[#0f0b0a] text-white">
+    <div className="flex min-h-dvh flex-col overflow-x-clip bg-[#0f0b0a] text-white">
       <header className={cx('no-print sticky top-0 z-40 transition-[background,box-shadow] duration-300', cx('border-b border-white/[0.06] bg-[#120d0c]', scrolled && 'shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]'))}>
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:h-[72px] sm:px-6">
           {meta.back && (
@@ -155,7 +155,7 @@ export function StudentLayout() {
         </div>
       )}
 
-      <main className={isHome ? '' : cx('mx-auto max-w-6xl px-4 pt-4 sm:px-6', meta.immersive ? 'pb-0' : 'pb-16')}>
+      <main className={isHome ? 'flex-1' : cx('mx-auto w-full max-w-6xl flex-1 px-4 pt-4 sm:px-6', meta.immersive ? 'pb-0' : 'pb-16')}>
         <Outlet />
       </main>
 

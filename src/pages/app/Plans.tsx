@@ -4,16 +4,17 @@ import { ArrowRight, CalendarDays, CalendarX2, Check, Copy, Hourglass, PartyPopp
 import { useAuth } from '../../lib/auth'
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
-import { book, loadDishMap, loadMember, loadSettings } from '../../lib/data'
+import { book, changeMenu, loadDishMap, loadMember, loadSettings } from '../../lib/data'
 import { addDays, formatDate, formatDateTime, today } from '../../lib/dates'
-import { DURATIONS, bookingStart, bookingTotal, customMealsOf, customValue, discountFor, weekCredit } from '../../lib/booking'
+import { DURATIONS, bookingStart, bookingTotal, choiceSlots, customMealsOf, customValue, discountFor, effectiveSelection, weekCredit, weekPaid } from '../../lib/booking'
 import { MEAL_NAME, formatINR, mealsLabel, paymentLabel, subLabel } from '../../lib/logic'
-import { MEALS, type BookingSpec, type Meal } from '../../lib/types'
+import { MEALS, type BookingSpec, type Meal, type MealMode, type MenuChoice } from '../../lib/types'
 import { ErrorNote, PageLoader, cx } from '../../components/ui'
 import { QR } from '../../components/QR'
 import { useToast } from '../../components/toast'
 import { LoginFlow } from '../../components/LoginSheet'
-import { readDraft } from './menu/useMenuData'
+import { MealModePicker } from '../../components/MealModePicker'
+import { changeKey, draftKey, readDraft } from './menu/useMenuData'
 
 const PACK_PHOTOS = ['/photos/thali-classic.jpg', '/photos/thali-fullday.jpg', '/photos/thali-protein.jpg', '/photos/thali-light.jpg']
 
@@ -24,11 +25,130 @@ export default function Plans() {
   const packId = params.get('pack')
   const customWeek = params.get('custom')
   const extraWeek = params.get('extra')
+  const changeWeek = params.get('change')
   return (
     <div className="-mx-4 -mt-4 min-h-[calc(100dvh-64px)] bg-[#0f0b0a] px-4 pb-16 pt-6 text-white sm:-mx-6 sm:px-6">
       <div className="mx-auto max-w-3xl">
-        {packId || customWeek || extraWeek ? <Checkout packId={packId} customWeek={customWeek} extraWeek={extraWeek} /> : <WalletHome />}
+        {changeWeek ? <ChangeCheckout weekId={changeWeek} /> : packId || customWeek || extraWeek ? <Checkout packId={packId} customWeek={customWeek} extraWeek={extraWeek} /> : <WalletHome />}
       </div>
+    </div>
+  )
+}
+
+// ---------- Paying for a menu change ----------
+
+function readChange(weekId: string): MenuChoice | null {
+  try {
+    const raw = localStorage.getItem(changeKey(weekId))
+    return raw ? (JSON.parse(raw) as MenuChoice) : null
+  } catch {
+    return null
+  }
+}
+
+function ChangeDone({ applied }: { applied: boolean }) {
+  return (
+    <Panel className="animate-rise mx-auto max-w-lg p-8 text-center">
+      <span className="mx-auto grid size-14 place-items-center rounded-full bg-[#34c759]/15 text-[#34c759]">{applied ? <Check className="size-7" /> : <Hourglass className="size-7" />}</span>
+      <h1 className="mt-4 text-[22px] font-bold">{applied ? 'Menu updated' : 'Payment sent for checking'}</h1>
+      <p className="mt-2 text-sm text-white/60">{applied ? 'Your new menu is saved.' : 'Your new menu applies as soon as we confirm the payment, usually within a few hours.'}</p>
+      <div className="mt-6 flex justify-center gap-2">
+        <Link to="/profile" className="bg-brand-grad inline-flex h-10 items-center rounded-full px-5 text-sm font-semibold">My pass</Link>
+        <Link to="/menu/create" className="inline-flex h-10 items-center rounded-full bg-white/[0.07] px-5 text-sm font-semibold ring-1 ring-white/10">Back to menu</Link>
+      </div>
+    </Panel>
+  )
+}
+
+function ChangeCheckout({ weekId }: { weekId: string }) {
+  const { profile } = useAuth()
+  const uid = profile?.role === 'student' && profile.full_name ? profile.id : null
+  const [utr, setUtr] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState<{ applied: boolean } | null>(null)
+  const q = useAsync(async () => {
+    const [settings, dishes, member, week, packs, items, saved] = await Promise.all([
+      loadSettings(), loadDishMap(), uid ? loadMember(uid) : Promise.resolve(null), api.get('weeks', weekId), api.list('packs', { eq: { week_id: weekId } }),
+      api.list('menu_items', { eq: { week_id: weekId } }), uid ? api.list('selections', { eq: { user_id: uid, week_id: weekId } }) : Promise.resolve([]),
+    ])
+    return { settings, dishes, member, week, packs, items, saved: saved[0] ?? null }
+  }, [uid, weekId])
+
+  if (q.loading && !q.data) return <PageLoader />
+  const choice = readChange(weekId)
+  if (done) return <ChangeDone applied={done.applied} />
+  if (!uid) return <Panel className="p-5"><LoginFlow dark compact hideLogo reason="Log in to finish your menu change." /></Panel>
+  if (!q.data?.week || !q.data.member || !choice) return <Empty title="Nothing to pay">Your menu change wasn’t found. Make it again from the menu.</Empty>
+  const { settings, dishes, member, week, packs } = q.data
+  const value = choice.mode === 'pack' ? packs.find((p) => p.id === choice.pack_id)?.price ?? 0 : customValue(choice.custom, dishes)
+  const items = q.data.items
+  const current = choiceSlots(items, packs, effectiveSelection({ userId: uid, week, items, packs, selection: q.data.saved, subs: member.subs }))
+  const paid = Math.max(weekPaid(member.subs, member.payments, uid, week), customValue(current, dishes))
+  const extra = Math.max(0, value - paid)
+  const walletUsed = Math.min(Math.max(member.wallet.balance, 0), extra)
+  const due = extra - walletUsed
+  const upi = `upi://pay?pa=${encodeURIComponent(settings.upi_id)}&pn=${encodeURIComponent(settings.upi_name)}&am=${due}&cu=INR&tn=${encodeURIComponent(`Radixo change ${profile?.member_code ?? ''}`)}`
+
+  async function submit(e?: FormEvent) {
+    e?.preventDefault()
+    const clean = utr.replace(/\s/g, '')
+    if (due > 0 && !/^\d{12}$/.test(clean)) return setErr('Enter the 12-digit UPI reference (UTR) from your payment app.')
+    setBusy(true)
+    setErr('')
+    try {
+      const r = await changeMenu(weekId, choice!, due > 0 ? clean : '')
+      try { localStorage.removeItem(changeKey(weekId)); localStorage.removeItem(draftKey(weekId)) } catch { /* ignore */ }
+      setDone({ applied: r.applied })
+    } catch (er) {
+      const m = er instanceof Error ? er.message : 'Could not save'
+      setErr(/utr/i.test(m) ? 'This UPI reference was already used. Check the number.' : m)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="animate-rise">
+      <Link to={`/menu/create?week=${weekId}`} className="text-sm font-semibold text-white/55 hover:text-white">← Back to menu</Link>
+      <h1 className="mt-3 text-[26px] font-bold leading-tight">Pay for your menu change</h1>
+      <p className="mt-1 text-sm text-white/55">Week of {formatDate(week.week_start)}. Your new menu is saved once this is paid.</p>
+      <Panel className="mt-5 space-y-2 p-4 text-sm">
+        <Row label="New menu for the week" value={formatINR(value)} />
+        <Row label="Your current menu" value={`− ${formatINR(paid)}`} />
+        {walletUsed > 0 && <Row label="From your wallet" value={`− ${formatINR(walletUsed)}`} accent />}
+        <div className="flex items-baseline justify-between border-t border-white/10 pt-3">
+          <span className="font-semibold">To pay</span>
+          <span className="text-[24px] font-bold tabular">{formatINR(due)}</span>
+        </div>
+        <p className="pt-1 text-xs text-white/45">Cheaper changes are free but not refunded. Meals within 48 hours can’t change.</p>
+      </Panel>
+      <Panel className="mt-4 overflow-hidden">
+        {extra === 0 ? (
+          <div className="p-4"><button type="button" onClick={() => submit()} disabled={busy} className="bg-brand-grad h-11 w-full rounded-full text-[15px] font-semibold disabled:opacity-60">{busy ? 'Saving…' : 'Save changes'}</button></div>
+        ) : due === 0 ? (
+          <div className="p-4">
+            {err && <p className="mb-3 text-sm text-[#ff8a7a]" role="alert">{err}</p>}
+            <button type="button" onClick={() => submit()} disabled={busy} className="bg-brand-grad h-11 w-full rounded-full text-[15px] font-semibold disabled:opacity-60">{busy ? 'Saving…' : 'Confirm · paid from wallet'}</button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="p-4">
+            <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+              <div className="rounded-2xl bg-white p-2">{settings.upi_id ? <QR value={upi} size={150} label={`UPI QR to pay ${formatINR(due)}`} /> : <p className="w-36 p-4 text-center text-xs text-ink/60">UPI not set up yet. Pay at the counter.</p>}</div>
+              <ol className="flex-1 space-y-2 text-sm text-white/75">
+                <li>1. Scan or open your UPI app and pay <b className="text-white">{formatINR(due)}</b></li>
+                <li>2. Copy the 12-digit UPI reference (UTR)</li>
+                <li>3. Paste it below</li>
+              </ol>
+            </div>
+            <div className={cx('mt-4 flex h-12 items-center rounded-xl bg-white/[0.06] px-4 ring-1 focus-within:ring-2 focus-within:ring-brand', err ? 'ring-brand' : 'ring-white/12')}>
+              <input inputMode="numeric" value={utr} onChange={(e) => { setUtr(e.target.value); setErr('') }} placeholder="12-digit UPI reference" aria-label="UPI reference" className="h-full flex-1 bg-transparent text-[16px] font-semibold tracking-wide outline-none placeholder:font-normal placeholder:text-white/30 focus-visible:outline-none" />
+            </div>
+            {err && <p className="mt-2 text-sm text-[#ff8a7a]" role="alert">{err}</p>}
+            <button type="submit" disabled={busy} className="bg-brand-grad mt-3 h-11 w-full rounded-full text-[15px] font-semibold disabled:opacity-60">{busy ? 'Sending…' : `Submit payment · ${formatINR(due)}`}</button>
+          </form>
+        )}
+      </Panel>
     </div>
   )
 }
@@ -36,7 +156,7 @@ export default function Plans() {
 // ---------- Checkout ----------
 
 function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; customWeek: string | null; extraWeek: string | null }) {
-  const { profile } = useAuth()
+  const { profile, refreshProfile } = useAuth()
   const uid = profile?.role === 'student' && profile.full_name ? profile.id : null
   const toast = useToast()
   const nav = useNavigate()
@@ -46,6 +166,9 @@ function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; cu
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<{ pending: boolean } | null>(null)
+  const [mode, setMode] = useState<MealMode>(profile?.meal_mode ?? 'dine')
+  const [address, setAddress] = useState(profile?.address ?? '')
+  const [addrErr, setAddrErr] = useState('')
 
   const q = useAsync(async () => {
     const [settings, dishes, member] = await Promise.all([loadSettings(), loadDishMap(), uid ? loadMember(uid) : Promise.resolve(null)])
@@ -100,10 +223,15 @@ function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; cu
   async function submit(e?: FormEvent) {
     e?.preventDefault()
     const clean = utr.replace(/\s/g, '')
+    if (mode === 'tiffin' && address.trim().length < 6) return setAddrErr('Add where we should deliver your tiffin.')
     if (due > 0 && !/^\d{12}$/.test(clean)) return setErr('Enter the 12-digit UPI reference (UTR) from your payment app.')
     setBusy(true)
     setErr('')
     try {
+      if (uid && (mode !== profile?.meal_mode || address.trim() !== profile?.address)) {
+        await api.update('profiles', uid, { meal_mode: mode, address: address.trim() })
+        await refreshProfile()
+      }
       const pay = await book(spec, due > 0 ? clean : '')
       setDone({ pending: pay.status === 'pending' })
     } catch (er) {
@@ -159,8 +287,15 @@ function Checkout({ packId, customWeek, extraWeek }: { packId: string | null; cu
             <p className="flex items-center gap-2 pb-1 text-white/70"><CalendarDays className="size-4" /> {formatDate(start, { weekday: true })} → {formatDate(end, { weekday: true, year: true })}</p>
             <Row label={`${formatINR(weekly)} × ${weeks} week${weeks > 1 ? 's' : ''}`} value={formatINR(gross)} />
             {disc > 0 && <Row label={`${disc}% off`} value={`− ${formatINR(gross - total)}`} accent />}
-            <p className="pt-1 text-xs text-white/45">Each new week your menu carries over. Change dishes any week before Saturday 8 pm.</p>
+            <p className="pt-1 text-xs text-white/45">Your menu carries over each week. Change any meal up to 48 hours before it; you only pay if the new menu costs more.</p>
           </Panel>
+        </>
+      )}
+
+      {uid && !isExtra && (
+        <>
+          <p className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">How do you want your meals?</p>
+          <MealModePicker mode={mode} address={address} onMode={(m) => { setMode(m); setAddrErr('') }} onAddress={(v) => { setAddress(v); setAddrErr('') }} error={addrErr} />
         </>
       )}
 

@@ -2,7 +2,7 @@
 // supabase/schema.sql implements the money parts (quote, skip credit) the same way, server-side.
 import { addDays, diffDays, mondayOf, parseISODate, today, weekdayIndex } from './dates'
 import { mealLines, slotCatalog } from './logic'
-import { MEALS, slotKey, type CustomMenu, type Dish, type Meal, type MenuItem, type Pack, type Selection, type Settings, type Subscription, type Week } from './types'
+import { MEALS, slotKey, type CustomMenu, type Dish, type Meal, type MenuItem, type Pack, type Payment, type Selection, type Settings, type Subscription, type Week } from './types'
 
 export const DURATIONS = [
   { weeks: 1, label: '1 week', short: '1 wk' },
@@ -106,3 +106,57 @@ export function skipCredit(subs: Subscription[], userId: string, start: string, 
 }
 
 export const isUpcoming = (date: string) => date > today()
+
+// ---------- Changing a booked menu ----------
+
+/** Hours before a meal starts after which it can't be changed. */
+export const CHANGE_LOCK_HOURS = 48
+
+const DEFAULT_START: Record<Meal, [number, number]> = { breakfast: [7, 30], lunch: [12, 0], snacks: [17, 0], dinner: [19, 30] }
+
+/** When a meal starts, from timings like "12:00 – 3:00 PM" (same rule as radixo_meal_start in SQL). */
+export function mealStart(date: string, meal: Meal, s?: Pick<Settings, 'breakfast_time' | 'lunch_time' | 'snacks_time' | 'dinner_time'> | null) {
+  const t = s ? { breakfast: s.breakfast_time, lunch: s.lunch_time, snacks: s.snacks_time, dinner: s.dinner_time }[meal] : ''
+  const [a = '', b = ''] = (t ?? '').replace(/[–—]/g, '-').split('-')
+  const m = a.match(/(\d{1,2}):(\d{2})/)
+  const [h, min] = m ? [Number(m[1]), Number(m[2])] : DEFAULT_START[meal]
+  const pm = m ? /pm/i.test(a) || (!/am/i.test(a) && /pm/i.test(b)) : false
+  const hour = m ? (h % 12) + (pm ? 12 : 0) : h
+  const d = parseISODate(date)
+  d.setHours(hour, min, 0, 0)
+  return d
+}
+
+/** A meal is locked once it starts within CHANGE_LOCK_HOURS. */
+export function slotLocked(weekStart: string, day: number, meal: Meal, s?: Parameters<typeof mealStart>[2], now = new Date()) {
+  return mealStart(addDays(weekStart, day), meal, s).getTime() - now.getTime() < CHANGE_LOCK_HOURS * 3_600_000
+}
+
+/** Already paid for a week: the booking's weekly price plus approved extras and menu changes for that week. */
+export function weekPaid(subs: Subscription[], payments: Payment[], userId: string, week: Pick<Week, 'id' | 'week_start'>) {
+  const changes = payments.filter((p) => p.user_id === userId && p.status === 'approved' && p.week_id === week.id && (p.details?.kind === 'extra' || p.details?.kind === 'change'))
+  return weekCredit(subs, userId, week) + changes.reduce((s, p) => s + p.amount + (p.wallet_used ?? 0), 0)
+}
+
+/** A menu choice as plain slots {"day-meal": dish ids}, to compare and to edit dish by dish. */
+export function choiceSlots(items: MenuItem[], packs: Pack[], sel: Pick<Selection, 'mode' | 'pack_id' | 'picks' | 'custom'> | null | undefined): CustomMenu {
+  if (!sel) return {}
+  if (sel.mode === 'custom') return Object.fromEntries(Object.entries(sel.custom ?? {}).filter(([, v]) => v.length))
+  const pack = packs.find((p) => p.id === sel.pack_id)
+  const out: CustomMenu = {}
+  for (let day = 0; day < 7; day++) {
+    for (const meal of MEALS) {
+      if (pack && !pack.meals.includes(meal)) continue
+      const ids = mealLines(items, day, meal).map((it) => (sel.picks?.[it.id] && it.dish_ids.includes(sel.picks[it.id]) ? sel.picks[it.id] : it.default_dish_id))
+      if (ids.length) out[slotKey(day, meal)] = ids
+    }
+  }
+  return out
+}
+
+/** Slots that differ between two menus. */
+export function changedSlots(a: CustomMenu, b: CustomMenu) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+  const norm = (v: string[] | undefined) => [...(v ?? [])].sort().join(',')
+  return [...keys].filter((k) => norm(a[k]) !== norm(b[k]))
+}

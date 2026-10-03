@@ -7,7 +7,7 @@ import { OTP_REQUIRED } from '../config'
 import { runLocalRpc } from './localRpc'
 import { cleanPhone, phoneEmail } from '../phone'
 
-const KEY = 'radixo-demo-db-v6' // v6: more dishes with photos; v5: bookings + wallet // v3: four meals, priced menus, custom menus
+const KEY = 'radixo-demo-db-v7' // v7: tiffin, menu changes; v6: more dishes with photos; v5: bookings + wallet // v3: four meals, priced menus, custom menus
 const listeners = new Set<(u: { id: string; email: string } | null) => void>()
 
 function load(): DemoDB {
@@ -83,7 +83,7 @@ export function createLocalBackend(): Backend {
       db().memberSeq += 1
       db().tables.profiles.push({
         id, email: e, full_name: profile.full_name ?? '', phone: profile.phone ?? '', college: profile.college ?? '',
-        year: profile.year ?? '', stay_type: profile.stay_type ?? '', area: profile.area ?? '', role: 'student',
+        year: profile.year ?? '', stay_type: profile.stay_type ?? '', area: profile.area ?? '', role: 'student', meal_mode: 'dine', address: '',
         member_code: `RDX${String(db().memberSeq).padStart(4, '0')}`, created_at: new Date().toISOString(),
       })
       db().session = id
@@ -123,7 +123,7 @@ export function createLocalBackend(): Backend {
         db().users.push(u)
         db().memberSeq += 1
         db().tables.profiles.push({
-          id: u.id, email, full_name: '', phone: p10, college: '', year: '', stay_type: '', area: '', role: 'student',
+          id: u.id, email, full_name: '', phone: p10, college: '', year: '', stay_type: '', area: '', role: 'student', meal_mode: 'dine', address: '',
           member_code: `RDX${String(db().memberSeq).padStart(4, '0')}`, created_at: new Date().toISOString(),
         })
         isNew = true

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { ArrowLeft, Check, Lock, Pencil } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { useAsync } from '../../../lib/useAsync'
-import { loadSettings, savePicks } from '../../../lib/data'
+import { changeMenu, loadSettings } from '../../../lib/data'
 import { DAY_NAMES, addDays, formatDate, formatWeekRange, mondayOf, today, weekdayIndex } from '../../../lib/dates'
 import { MEAL_NAME, customCount, customMeals, customTotal, dishesFor, formatINR, isLocked, mealsLabel } from '../../../lib/logic'
 import { MEALS, type Dish, type Meal, type Selection, type Settings } from '../../../lib/types'
@@ -11,7 +11,7 @@ import { EmptyState, ErrorNote, PageLoader, cx } from '../../../components/ui'
 import { DishImage } from '../../../components/DishImage'
 import { useToast } from '../../../components/toast'
 import { useLoginGate } from '../../../components/LoginSheet'
-import { readDraft, useMenuData } from './useMenuData'
+import { readDraft, stashChange, useMenuData } from './useMenuData'
 import { darkPaper } from '../../../components/menu'
 
 const PACK_PHOTOS = ['/photos/thali-classic.jpg', '/photos/thali-fullday.jpg', '/photos/thali-protein.jpg', '/photos/thali-light.jpg']
@@ -55,11 +55,11 @@ export default function MenuView() {
   const meals = pack ? pack.meals : sel?.mode === 'custom' ? customMeals(sel.custom) : mineIsPack ? mineIsPack.meals : MEALS.filter((m) => items.some((it) => it.meal === m))
   const price = pack ? pack.price : sel?.mode === 'custom' ? customTotal(sel.custom, dishes) : mineIsPack?.price ?? 0
   const credit = q.data!.credit
-  const booked = credit > 0 // this week is already paid for by a booking
+  const booked = q.data!.booked // this week is already paid for by a booking
   const covered = booked && price <= credit
   const due = booked ? Math.max(0, price - credit) : price
   const savedCustom = q.data!.saved?.mode === 'custom'
-  const locked = isLocked(week)
+  const locked = isLocked(week) && !booked
   const selected = !!pack && selection?.mode === 'pack' && selection.pack_id === pack.id
   const photoPack = pack ?? mineIsPack
   const photo = photoPack ? PACK_PHOTOS[Math.max(0, bookable.indexOf(photoPack)) % PACK_PHOTOS.length] : '/photos/served.jpg'
@@ -80,16 +80,20 @@ export default function MenuView() {
     if (!pack) {
       if (sel?.mode !== 'custom' || !savedCustom) return nav('/menu/create')
       if (!booked) return nav(`/wallet?custom=${week.id}`)
-      return due > 0 ? nav(`/wallet?extra=${week.id}`) : nav('/menu/create')
+      return nav(`/menu/create?week=${week.id}`)
     }
     if (!booked) return nav(`/wallet?pack=${pack.id}`)
     const p = pack
     const save = async () => {
       setBusy(true)
       try {
-        await savePicks(uid!, week.id, 'pack', p.id, p.picks)
-        if (p.price > credit) nav(`/wallet?extra=${week.id}`)
-        else toast(`${p.name} is your menu for ${formatWeekRange(week.week_start)}`)
+        const choice = { mode: 'pack' as const, pack_id: p.id, picks: p.picks, custom: {} }
+        if (p.price > credit) {
+          stashChange(week.id, choice)
+          return nav(`/wallet?change=${week.id}`)
+        }
+        await changeMenu(week.id, choice)
+        toast(`${p.name} is your menu for ${formatWeekRange(week.week_start)}`)
         q.reload()
       } catch (e) {
         toast(e instanceof Error ? e.message : 'Could not save', 'error')

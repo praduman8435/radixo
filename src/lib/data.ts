@@ -1,7 +1,7 @@
 // Loaders and write actions used across screens.
 import { api } from './backend'
 import { defaultDeadline, today } from './dates'
-import type { BookingSpec, CustomMenu, Meal, MenuItem, Pack, Pause, Payment, Picks, Plan, Selection, Settings, Week } from './types'
+import type { BookingSpec, CustomMenu, Meal, MenuItem, Pack, Pause, Payment, Picks, Plan, Selection, Settings, Week, MenuChoice } from './types'
 
 export const DEFAULT_SETTINGS: Settings = {
   id: 1, upi_id: '', upi_name: 'Radixo', whatsapp: '', address: '', discount_1m: 5, discount_3m: 8, discount_6m: 12, skip_notice_hours: 24,
@@ -91,6 +91,11 @@ export function rejectPayment(payment: Payment, note: string) {
 /** Cash at the counter (or any correction): money goes into the student's wallet. */
 export function addWalletMoney(userId: string, amount: number, note: string) {
   return api.insert('wallet_txns', { user_id: userId, amount: Math.round(amount), kind: 'admin', note: note || 'Added by the owner', ref_id: null })
+}
+
+/** Change a booked week's menu. No extra cost: saved now. Costlier: wallet first, then UPI; saved once paid. */
+export function changeMenu(weekId: string, sel: MenuChoice, utr = '') {
+  return api.rpc<{ applied: boolean; extra: number; payment?: Payment }>('change_menu', { p_week: weekId, p_sel: sel, p_utr: utr })
 }
 
 /** Owner sets the login password for a staff/owner account (their own included). */

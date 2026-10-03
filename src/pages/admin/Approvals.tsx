@@ -87,6 +87,7 @@ export default function Approvals() {
                       </p>
                       {p.status === 'pending' && d?.start_date && d.end_date && !isExtra && <p className="mt-1 text-xs text-muted">If approved: runs {formatDate(d.start_date)} – {formatDate(d.end_date)}{d.discount_pct ? ` · ${d.discount_pct}% off` : ''}</p>}
                       {p.status === 'pending' && isExtra && <p className="mt-1 text-xs text-muted">Extra for a costlier menu in a week they already booked</p>}
+                      {p.status === 'pending' && d?.kind === 'change' && <p className="mt-1 text-xs text-muted">Menu change: their new menu applies when you approve{p.wallet_used > 0 ? '' : ''}</p>}
                       {p.status === 'rejected' && p.wallet_used > 0 && <p className="mt-1 text-xs text-muted">{formatINR(p.wallet_used)} went back to their wallet</p>}
                       {p.admin_note && p.status !== 'pending' && <p className="mt-1 text-xs text-muted">Note: {p.admin_note}</p>}
                     </div>
@@ -97,7 +98,7 @@ export default function Approvals() {
                     {p.status === 'pending' && (
                       <div className="flex w-full gap-2 sm:w-auto">
                         <Button variant="danger" className="flex-1 sm:flex-none" onClick={() => { setRejecting(p); setNote('') }} disabled={busy === p.id}><X className="size-4" /> Reject</Button>
-                        <Button variant="success" className="flex-1 sm:flex-none" loading={busy === p.id} onClick={() => run(p.id, () => approvePayment(p), isExtra ? 'Approved' : `${name(p.user_id)}'s booking is confirmed`)}><Check className="size-4" /> Approve</Button>
+                        <Button variant="success" className="flex-1 sm:flex-none" loading={busy === p.id} onClick={() => run(p.id, () => approvePayment(p), isExtra ? 'Approved' : d?.kind === 'change' ? `${name(p.user_id)}'s new menu is live` : `${name(p.user_id)}'s booking is confirmed`)}><Check className="size-4" /> Approve</Button>
                       </div>
                     )}
                   </Card>

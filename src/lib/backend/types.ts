@@ -9,7 +9,7 @@ export interface Query<T> {
   limit?: number
 }
 
-export type RpcName = 'book' | 'mark_skip' | 'cancel_skip' | 'approve_payment' | 'reject_payment' | 'set_team_password'
+export type RpcName = 'book' | 'mark_skip' | 'cancel_skip' | 'approve_payment' | 'reject_payment' | 'set_team_password' | 'change_menu'
 
 export interface AuthUser {
   id: string

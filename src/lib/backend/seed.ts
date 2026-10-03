@@ -286,7 +286,7 @@ export function createSeed(): DemoDB {
   const mk = (id: string, email: string, full_name: string, role: Profile['role'], extra: Partial<Profile>, n: number) => {
     users.push({ id, email, password: DEMO_PASSWORD })
     profiles.push({
-      id, email, full_name, role, phone: '', college: '', year: '', stay_type: '', area: '',
+      id, email, full_name, role, phone: '', college: '', year: '', stay_type: '', area: '', meal_mode: 'dine', address: '',
       member_code: `RDX${String(n).padStart(4, '0')}`, created_at: addDays(t, -40) + 'T10:00:00.000Z', ...extra,
     })
   }
@@ -294,7 +294,9 @@ export function createSeed(): DemoDB {
   mk('u-staff', phoneEmail(DEMO_PHONES.staff), 'Counter Staff', 'staff', { phone: DEMO_PHONES.staff, college: '' }, 2)
   STUDENTS.forEach(([name, phone, year, stay, area], i) => {
     const id = i === 0 ? 'u-student' : `u-s${i}`
-    mk(id, phoneEmail(phone), name, 'student', { phone, year, stay_type: stay, area }, i + 3)
+    // A few students take tiffins instead of eating at the mess.
+    const tiffin = [2, 5, 9].includes(i)
+    mk(id, phoneEmail(phone), name, 'student', { phone, year, stay_type: stay, area, meal_mode: tiffin ? 'tiffin' : 'dine', address: tiffin ? `Room ${10 + i}, ${area}` : '' }, i + 3)
   })
 
   // Bookings: each student booked a ready-made menu or their own for 1 week to 6 months, starting on a Monday.
