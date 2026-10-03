@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, CheckCircle2, Search, XCircle, AlertCircle } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Camera, CheckCircle2, Search, XCircle, AlertCircle, Check, X, Package } from 'lucide-react'
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
 import { loadOps, students } from '../../lib/admin'
-import { checkIn } from '../../lib/data'
-import { currentMeal, formatDate, mondayOf, today } from '../../lib/dates'
-import { MEAL_NAME, MEAL_OPTIONS, isEligible, mealsLabel, pauseOn, prepSheet, subscriptionOn } from '../../lib/logic'
+import { checkIn, loadDishMap } from '../../lib/data'
+import { effectiveSelection } from '../../lib/booking'
+import { canUseCamera, startScanner } from '../../lib/qrScanner'
+import { currentMeal, formatDate, mondayOf, today, weekdayIndex } from '../../lib/dates'
+import { MEAL_NAME, MEAL_OPTIONS, dishesFor, isEligible, mealsLabel, pauseOn, prepSheet, subscriptionOn } from '../../lib/logic'
 import type { Meal, Profile } from '../../lib/types'
-import { Avatar, Button, Card, ErrorNote, Modal, PageHeader, PageLoader, Segmented, cx } from '../../components/ui'
+import { Avatar, Button, Card, ErrorNote, PageHeader, PageLoader, Segmented, cx } from '../../components/ui'
 import { useToast } from '../../components/toast'
 
-// BarcodeDetector is not in the TS DOM lib yet.
-interface Detector { detect(src: CanvasImageSource): Promise<{ rawValue: string }[]> }
-declare global { interface Window { BarcodeDetector?: new (o: { formats: string[] }) => Detector } }
+type ScanResult =
+  | { kind: 'ok'; p: Profile; dishes: string[] }
+  | { kind: 'refused'; p: Profile; reason: string; dishes: string[]; already: boolean }
+  | { kind: 'unknown'; code: string }
 
 export default function CheckIn() {
   const toast = useToast()
@@ -26,8 +30,8 @@ export default function CheckIn() {
   const q = useAsync(async () => {
     const ops = await loadOps({ attendanceDays: 35 })
     const week = ops.weeks.find((w) => w.week_start === mondayOf(t))
-    const items = week ? await api.list('menu_items', { eq: { week_id: week.id } }) : []
-    return { ops, week, items }
+    const [items, dishMap] = await Promise.all([week ? api.list('menu_items', { eq: { week_id: week.id } }) : Promise.resolve([]), loadDishMap()])
+    return { ops, week, items, dishMap }
   }, [t])
 
   const ops = q.data?.ops
@@ -53,14 +57,26 @@ export default function CheckIn() {
   if (q.error) return <ErrorNote message={q.error} onRetry={q.reload} />
   const o = ops!
 
+  /** What this member gets for the selected meal today: their own menu, ready-made picks, or the defaults. */
+  function plate(p: Profile): string[] {
+    const { week, items, dishMap } = q.data!
+    if (!week) return []
+    const saved = o.selections.find((x) => x.user_id === p.id && x.week_id === week.id)
+    const sel = effectiveSelection({ userId: p.id, week, items, packs: o.packs.filter((x) => x.week_id === week.id), selection: saved, subs: o.subs })
+    return dishesFor(items, weekdayIndex(t), meal, sel).map((id) => dishMap.get(id)?.name).filter((x): x is string => !!x)
+  }
+
   function status(p: Profile): { ok: boolean; done: boolean; reason: string } {
     const done = todays.some((a) => a.user_id === p.id)
-    if (done) return { ok: false, done, reason: `Already checked in for ${meal}` }
+    if (done) {
+      const at = todays.find((a) => a.user_id === p.id)
+      return { ok: false, done, reason: `Already had ${meal}${at ? ` at ${new Date(at.created_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}` : ''}` }
+    }
     const sub = subscriptionOn(o.subs, p.id, t)
-    if (!sub) return { ok: false, done, reason: 'No active plan' }
-    if (pauseOn(o.pauses, p.id, t)) return { ok: false, done, reason: 'Plan is paused today' }
-    if (!isEligible(p.id, t, meal, o.subs, o.pauses)) return { ok: false, done, reason: `${MEAL_NAME[meal]} isn’t included (${mealsLabel(sub.meals)})` }
-    return { ok: true, done, reason: `Plan till ${formatDate(sub.end_date)}` }
+    if (!sub) return { ok: false, done, reason: 'No booking for today' }
+    if (pauseOn(o.pauses, p.id, t)) return { ok: false, done, reason: 'Marked “not coming” today' }
+    if (!isEligible(p.id, t, meal, o.subs, o.pauses)) return { ok: false, done, reason: `${MEAL_NAME[meal]} isn’t in their booking (${mealsLabel(sub.meals)})` }
+    return { ok: true, done, reason: `Booked till ${formatDate(sub.end_date)}` }
   }
 
   async function doCheckIn(p: Profile) {
@@ -82,15 +98,20 @@ export default function CheckIn() {
     if (matches.length === 1 && status(matches[0]).ok) void doCheckIn(matches[0])
   }
 
-  function onScan(code: string) {
-    setScanning(false)
+  /** A scanned pass: check in if allowed, and say clearly what happened. */
+  async function onScan(code: string): Promise<ScanResult> {
     const p = students(o.profiles).find((x) => x.member_code.toLowerCase() === code.trim().toLowerCase())
-    if (!p) return toast(`No member with code ${code}`, 'error')
+    if (!p) return { kind: 'unknown', code }
     const st = status(p)
-    if (st.ok) void doCheckIn(p)
-    else {
-      setQuery(p.member_code)
-      toast(`${p.full_name}: ${st.reason}`, 'error')
+    const dishes = plate(p)
+    if (!st.ok) return { kind: 'refused', p, reason: st.reason, dishes, already: st.done }
+    try {
+      const r = await checkIn(p.id, meal, t)
+      q.reload()
+      if (r.already) return { kind: 'refused', p, reason: `Already had ${meal}`, dishes, already: true }
+      return { kind: 'ok', p, dishes }
+    } catch (e) {
+      return { kind: 'refused', p, reason: e instanceof Error ? e.message : 'Could not check in', dishes, already: false }
     }
   }
 
@@ -106,6 +127,9 @@ export default function CheckIn() {
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <div className="space-y-4">
+          <button type="button" onClick={() => setScanning(true)} disabled={!canUseCamera()} className="bg-brand-grad flex h-16 w-full items-center justify-center gap-3 rounded-2xl text-lg font-bold text-white shadow-[0_14px_28px_-14px_rgba(222,59,44,0.8)] transition active:scale-[0.99] disabled:opacity-50">
+            <Camera className="size-6" /> Scan QR pass
+          </button>
           <Card className="p-4">
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -120,11 +144,8 @@ export default function CheckIn() {
                   className="h-14 w-full rounded-2xl border border-line bg-cream pl-11 pr-4 text-lg font-semibold placeholder:font-normal placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand/15"
                 />
               </div>
-              {typeof window !== 'undefined' && window.BarcodeDetector && (
-                <Button variant="secondary" className="h-14 px-4" onClick={() => setScanning(true)} aria-label="Scan QR pass"><Camera className="size-5" /></Button>
-              )}
             </div>
-            <p className="mt-2 text-xs text-muted">Press Enter to check in when exactly one eligible member matches.</p>
+            <p className="mt-2 text-xs text-muted">No QR? Type the code, phone or name. Press Enter to check in.</p>
           </Card>
 
           {query.trim().length >= 2 && matches.length === 0 && <Card className="p-6 text-center text-sm text-muted">No member found for &ldquo;{query}&rdquo;.</Card>}
@@ -138,7 +159,8 @@ export default function CheckIn() {
                     <Avatar name={p.full_name} className="size-12 text-base" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-display text-lg font-bold">{p.full_name}</p>
-                      <p className="text-sm text-muted"><span className="font-mono font-semibold text-ink">{p.member_code}</span> · {p.phone}</p>
+                      <p className="text-sm text-muted"><span className="font-mono font-semibold text-ink">{p.member_code}</span> · {p.phone}{p.meal_mode === 'tiffin' && <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber">Tiffin</span>}</p>
+                      {plate(p).length > 0 && <p className="mt-0.5 truncate text-sm text-ink/80">{plate(p).join(' · ')}</p>}
                       <p className={cx('mt-1 flex items-center gap-1 text-sm font-semibold', st.ok ? 'text-leaf' : st.done ? 'text-amber' : 'text-brand')}>
                         {st.ok ? <CheckCircle2 className="size-4" /> : st.done ? <AlertCircle className="size-4" /> : <XCircle className="size-4" />} {st.reason}
                       </p>
@@ -158,7 +180,7 @@ export default function CheckIn() {
             <div>
               <p className="text-sm font-semibold text-muted">{MEAL_NAME[meal]} so far</p>
               <p className="font-display text-4xl font-extrabold tabular">{todays.length}<span className="text-xl text-muted"> / {expected}</span></p>
-              <p className="text-xs text-muted">expected · {eligibleCount} members on plan</p>
+              <p className="text-xs text-muted">expected · {eligibleCount} booked today</p>
             </div>
           </div>
           <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-sand" aria-hidden>
@@ -183,50 +205,123 @@ export default function CheckIn() {
         </Card>
       </div>
 
-      <ScanModal open={scanning} onClose={() => setScanning(false)} onCode={onScan} />
+      {scanning && <Scanner meal={meal} count={todays.length} expected={expected} onClose={() => setScanning(false)} onScan={onScan} />}
     </div>
   )
 }
 
-function ScanModal({ open, onClose, onCode }: { open: boolean; onClose: () => void; onCode: (c: string) => void }) {
+const AUTO_NEXT_MS = 2500
+
+/** Full-screen scanner: camera, then a big green/red result, then straight back to the camera. */
+function Scanner({ meal, count, expected, onClose, onScan }: { meal: Meal; count: number; expected: number; onClose: () => void; onScan: (code: string) => Promise<ScanResult> }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [err, setErr] = useState('')
+  const [result, setResult] = useState<ScanResult | null>(null)
+  const busy = useRef(false)
+  const last = useRef<{ code: string; at: number } | null>(null)
+  const onScanRef = useRef(onScan)
+  onScanRef.current = onScan
 
   useEffect(() => {
-    if (!open || !window.BarcodeDetector) return
-    let stream: MediaStream | null = null
-    let timer = 0
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    let stop: (() => void) | null = null
     let alive = true
-    const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'environment' } })
-      .then((s) => {
-        stream = s
-        if (!videoRef.current) return
-        videoRef.current.srcObject = s
-        void videoRef.current.play()
-        const tick = async () => {
-          if (!alive || !videoRef.current) return
-          try {
-            const codes = await detector.detect(videoRef.current)
-            if (codes[0]?.rawValue) return onCode(codes[0].rawValue)
-          } catch { /* frame not ready */ }
-          timer = window.setTimeout(tick, 300)
-        }
-        void tick()
-      })
-      .catch(() => setErr('Camera not available. Allow camera access, or type the code.'))
+    if (!videoRef.current) return
+    startScanner(videoRef.current, async (code) => {
+      // One result at a time; ignore the same pass held up again within a few seconds.
+      if (busy.current) return
+      if (last.current && last.current.code === code && Date.now() - last.current.at < 4000) return
+      busy.current = true
+      last.current = { code, at: Date.now() }
+      const r = await onScanRef.current(code)
+      try { navigator.vibrate?.(r.kind === 'ok' ? 90 : [70, 60, 70, 60, 70]) } catch { /* not supported */ }
+      setResult(r)
+    })
+      .then((s) => { if (alive) stop = s; else s() })
+      .catch(() => { if (alive) setErr('Camera not available. Allow camera access in your browser settings, or type the code instead.') })
     return () => {
       alive = false
-      clearTimeout(timer)
-      stream?.getTracks().forEach((tr) => tr.stop())
+      stop?.()
+      document.body.style.overflow = prev
     }
-  }, [open, onCode])
+  }, [])
 
-  return (
-    <Modal open={open} onClose={onClose} title="Scan meal pass">
-      {err ? <p className="text-sm text-brand-600">{err}</p> : <video ref={videoRef} className="aspect-square w-full rounded-2xl bg-ink object-cover" muted playsInline />}
-      <p className="mt-3 text-sm text-muted">Point the camera at the student&rsquo;s QR pass.</p>
-    </Modal>
+  const next = () => {
+    setResult(null)
+    busy.current = false
+  }
+
+  // Successful scans move on by themselves; refusals wait for a tap so staff read the reason.
+  useEffect(() => {
+    if (result?.kind !== 'ok') return
+    const id = window.setTimeout(next, AUTO_NEXT_MS)
+    return () => clearTimeout(id)
+  }, [result])
+
+  const ok = result?.kind === 'ok'
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex flex-col bg-black text-white" role="dialog" aria-modal="true" aria-label="Scan meal pass">
+      <div className="flex items-center justify-between px-4 pb-3 pt-[max(14px,env(safe-area-inset-top))]">
+        <div>
+          <p className="text-[17px] font-bold">{MEAL_NAME[meal]}</p>
+          <p className="text-xs text-white/60 tabular">{count} of {expected} served</p>
+        </div>
+        <button type="button" onClick={onClose} className="grid size-11 place-items-center rounded-full bg-white/15" aria-label="Close scanner"><X className="size-6" /></button>
+      </div>
+
+      <div className="relative flex-1 overflow-hidden">
+        <video ref={videoRef} className="absolute inset-0 size-full object-cover" muted playsInline />
+        {err ? (
+          <p className="absolute inset-x-6 top-1/3 rounded-2xl bg-black/80 p-5 text-center text-[15px]">{err}</p>
+        ) : (
+          <>
+            <div className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[68%] max-w-[320px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] ring-4 ring-white/90" aria-hidden />
+            <p className="absolute inset-x-0 bottom-8 text-center text-[15px] font-semibold text-white/90">Point at the student&rsquo;s QR pass</p>
+          </>
+        )}
+
+        {result && (
+          <div className={cx('absolute inset-0 flex flex-col animate-rise', ok ? 'bg-[#11823b]' : 'bg-[#c42b1c]')} onClick={ok ? next : undefined}>
+            <div className="flex flex-1 flex-col items-center overflow-y-auto px-6 pt-8 text-center">
+              <span className="grid size-24 shrink-0 place-items-center rounded-full bg-white/20">
+                {ok ? <Check className="size-14" strokeWidth={3.2} /> : <X className="size-14" strokeWidth={3.2} />}
+              </span>
+              {result.kind === 'unknown' ? (
+                <>
+                  <p className="mt-5 text-[30px] font-extrabold leading-tight">Not a Radixo pass</p>
+                  <p className="mt-2 text-lg text-white/85">Ask for their member code or phone number.</p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-4 text-[13px] font-bold uppercase tracking-[0.18em] text-white/80">{ok ? 'Checked in' : 'Don’t serve'}</p>
+                  <p className="mt-1 text-[30px] font-extrabold leading-tight">{result.p.full_name}</p>
+                  <p className="mt-1 flex items-center justify-center gap-2 text-[15px] text-white/85">
+                    <span className="font-mono font-semibold">{result.p.member_code}</span>
+                    {result.p.meal_mode === 'tiffin' && <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-0.5 text-xs font-bold text-ink"><Package className="size-3.5" /> Tiffin</span>}
+                  </p>
+                  {result.kind === 'refused' && <p className="mt-5 rounded-2xl bg-black/20 px-5 py-3 text-xl font-bold">{result.reason}</p>}
+                  {ok && result.dishes.length > 0 && (
+                    <div className="mt-6 w-full max-w-sm rounded-2xl bg-black/20 p-4 text-left">
+                      <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-white/75">{result.p.meal_mode === 'tiffin' ? 'Pack' : 'Serve'}</p>
+                      <ul className="mt-2 space-y-1.5">
+                        {result.dishes.map((d) => <li key={d} className="text-[22px] font-bold leading-snug">{d}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-3">
+              <button type="button" onClick={(e) => { e.stopPropagation(); next() }} className="relative h-14 w-full overflow-hidden rounded-2xl bg-white text-lg font-bold text-ink">
+                {ok && <span className="absolute inset-y-0 left-0 bg-black/10" style={{ animation: `quote-progress ${AUTO_NEXT_MS}ms linear forwards` }} aria-hidden />}
+                <span className="relative">Next student</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
   )
 }
