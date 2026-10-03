@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { Plus, Check, Clock3, Eye, Lock, RotateCcw, X } from 'lucide-react'
+import { Plus, Check, ChevronRight, Clock3, Eye, Lock, RotateCcw, X } from 'lucide-react'
 import { useAuth } from '../../../lib/auth'
 import { savePicks } from '../../../lib/data'
 import { formatDateTime, formatWeekRange, mondayOf, timeUntil, today, weekdayIndex } from '../../../lib/dates'
@@ -12,7 +12,8 @@ import { useLoginGate } from '../../../components/LoginSheet'
 import { readDraft, useMenuData } from './useMenuData'
 
 const PACK_PHOTOS = ['/photos/thali-classic.jpg', '/photos/thali-fullday.jpg', '/photos/thali-protein.jpg', '/photos/thali-light.jpg']
-const SWIPE_AT = 110 // px of drag that counts as a swipe
+const SWIPE_AT = 100 // px of drag that counts as a swipe
+const HINT_KEY = 'radixo-swipe-hint-seen'
 
 type Card =
   | { kind: 'mine'; key: string; title: string; photo: string; price: number; meals: Meal[]; sel: Selection; due: number }
@@ -50,6 +51,13 @@ export default function MenuHome() {
   const [fly, setFly] = useState<0 | 1 | -1>(0)
   const [busy, setBusy] = useState(false)
   const start = useRef<{ x: number; y: number } | null>(null)
+  const moved = useRef(false)
+  const [hint, setHint] = useState(() => { try { return !localStorage.getItem(HINT_KEY) } catch { return false } })
+  const hideHint = () => {
+    if (!hint) return
+    setHint(false)
+    try { localStorage.setItem(HINT_KEY, '1') } catch { /* ignore */ }
+  }
 
   const data = q.data
   const week = data?.week
@@ -112,6 +120,7 @@ export default function MenuHome() {
     const c = cards[idx]
     if (!c || fly) return
     setFly(dir)
+    hideHint()
     window.setTimeout(() => {
       setFly(0)
       setDrag({ x: 0, y: 0, active: false })
@@ -137,16 +146,25 @@ export default function MenuHome() {
   const onDown = (e: RPointerEvent) => {
     if ((e.target as HTMLElement).closest('a,button')) return
     start.current = { x: e.clientX, y: e.clientY }
+    moved.current = false
+    hideHint()
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     setDrag({ x: 0, y: 0, active: true })
   }
   const onMove = (e: RPointerEvent) => {
     if (!start.current) return
-    setDrag({ x: e.clientX - start.current.x, y: (e.clientY - start.current.y) * 0.3, active: true })
+    const x = e.clientX - start.current.x
+    if (Math.abs(x) > 8 || Math.abs(e.clientY - start.current.y) > 8) moved.current = true
+    setDrag({ x, y: (e.clientY - start.current.y) * 0.3, active: true })
   }
   const onUp = () => {
     if (!start.current) return
     start.current = null
+    if (!moved.current && top) {
+      // A tap (no drag) opens the card: the full week for a menu, the builder for "create".
+      setDrag({ x: 0, y: 0, active: false })
+      return nav(top.kind === 'create' ? '/menu/create' : top.kind === 'mine' ? '/menu/view/mine' : `/menu/view/${top.pack.id}`)
+    }
     if (drag.x > SWIPE_AT) swipe(1)
     else if (drag.x < -SWIPE_AT) swipe(-1)
     else setDrag({ x: 0, y: 0, active: false })
@@ -167,15 +185,15 @@ export default function MenuHome() {
   return (
     <div className="-mx-4 -mb-16 -mt-4 min-h-[calc(100dvh-64px)] bg-[#0f0b0a] text-white sm:-mx-6">
       {/* Header band */}
-      <section className="relative overflow-hidden bg-[#120d0c] px-4 pb-24 pt-8 text-white sm:px-6">
-        <img src="/menu/chef-lineart.jpg" alt="" className="pointer-events-none absolute -right-16 bottom-0 w-[340px] opacity-25 [mask-image:linear-gradient(to_left,black_40%,transparent)] sm:right-0 sm:w-[460px] sm:opacity-40" aria-hidden />
+      <section className="relative overflow-hidden bg-[#120d0c] px-4 pb-20 pt-5 text-white sm:px-6 sm:pb-24 sm:pt-8">
+        <img src="/menu/chef-lineart.jpg" alt="" className="pointer-events-none absolute bottom-0 right-0 hidden w-[460px] opacity-40 [mask-image:linear-gradient(to_left,black_40%,transparent)] sm:block" aria-hidden />
         <div className="relative mx-auto max-w-6xl">
           <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-medium text-white/75">
             {locked ? <><Lock className="size-3.5" /> Choices closed for this week</> : <><Clock3 className="size-3.5" /> Choose by {formatDateTime(week.choice_deadline)} · {timeUntil(week.choice_deadline)}</>}
           </p>
-          <h1 className="mt-4 font-display text-[30px] font-bold leading-tight sm:text-[40px]">Menus for {formatWeekRange(week.week_start)}</h1>
-          <p className="mt-2 max-w-md text-[15px] text-white/60">Swipe through this week&rsquo;s menus. Swipe right to book one, left to see the next, or build your own.</p>
-          <div className="mt-5 flex flex-wrap gap-2">
+          <h1 className="mt-3 text-[24px] font-semibold leading-tight tracking-tight sm:mt-4 sm:text-[36px]">Menus for {formatWeekRange(week.week_start)}</h1>
+          <p className="mt-1.5 max-w-md text-sm text-white/55 sm:text-[15px]">Swipe right to book, left to skip. Tap a card to see the whole week.</p>
+          <div className="mt-4 hidden flex-wrap gap-2 sm:flex">
             <Link to="/menu/create" className="bg-brand-grad inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)]">
               {data.selection?.mode === 'custom' ? 'Edit my menu' : 'Build your own'}
             </Link>
@@ -187,7 +205,7 @@ export default function MenuHome() {
       {/* Deck */}
       <section className="relative mx-auto -mt-16 max-w-6xl px-4 pb-16 sm:px-6">
         <div className="mx-auto w-full max-w-[370px]">
-          <div className="relative h-[500px] select-none" aria-roledescription="carousel" aria-label="Menus">
+          <div className="relative h-[430px] select-none sm:h-[500px]" aria-roledescription="carousel" aria-label="Menus">
             {done ? (
               <div className="animate-rise absolute inset-0 flex flex-col overflow-hidden rounded-[28px] bg-[#141010] text-white shadow-[0_30px_60px_-28px_rgba(0,0,0,0.85)] ring-1 ring-white/10">
                 <span className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-[radial-gradient(circle,rgba(201,52,28,0.35),transparent_65%)]" aria-hidden />
@@ -220,7 +238,7 @@ export default function MenuHome() {
                 const isTop = depth === 0
                 const style = isTop
                   ? { transform: `translate(${dx}px, ${fly ? -40 : drag.y}px) rotate(${dx / 18}deg)`, transition: drag.active && !fly ? 'none' : 'transform 0.28s cubic-bezier(0.2,0.8,0.2,1)' }
-                  : { transform: `translateY(${depth * 14}px) scale(${1 - depth * 0.05})`, transition: 'transform 0.3s ease', opacity: depth === 2 ? 0.6 : 1 }
+                  : { transform: `translate(${depth % 2 ? 10 : -10}px, ${depth * 16}px) rotate(${depth % 2 ? 3 : -3}deg) scale(${1 - depth * 0.05})`, transition: 'transform 0.3s ease', opacity: depth === 2 ? 0.55 : 0.85 }
                 return (
                   <article
                     key={c.key}
@@ -229,12 +247,12 @@ export default function MenuHome() {
                     onPointerMove={isTop ? onMove : undefined}
                     onPointerUp={isTop ? onUp : undefined}
                     onPointerCancel={isTop ? onUp : undefined}
-                    className={cx('absolute inset-0 flex touch-pan-y flex-col overflow-hidden rounded-[28px] bg-[#141010] text-white shadow-[0_30px_60px_-28px_rgba(0,0,0,0.85)] ring-1 ring-black/5', isTop && 'cursor-grab active:cursor-grabbing')}
+                    className={cx('absolute inset-0 flex touch-pan-y flex-col overflow-hidden rounded-[28px] bg-[#141010] text-white shadow-[0_30px_60px_-28px_rgba(0,0,0,0.85)] ring-1 ring-white/10', isTop && 'cursor-grab active:cursor-grabbing', isTop && hint && !drag.active && !fly && 'deck-hint')}
                     aria-hidden={!isTop}
                   >
                     {c.kind === 'create' ? (
                       <>
-                        <div className="relative h-[280px] shrink-0 overflow-hidden bg-[#09080d]">
+                        <div className="relative h-[210px] shrink-0 overflow-hidden bg-[#09080d] sm:h-[280px]">
                           <img src="/menu/chef-lineart.jpg" alt="" draggable={false} className="size-full object-cover object-top" />
                           <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#141010] to-transparent" />
                         </div>
@@ -242,12 +260,12 @@ export default function MenuHome() {
                           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-turmeric">Your way</p>
                           <h3 className="mt-1 font-script text-[36px] leading-none">Create your own</h3>
                           <p className="mt-3 text-sm leading-relaxed text-white/60">Pick dishes for every meal, day by day. You pay only for what you add.</p>
-                          <p className="mt-auto text-xs text-white/40">Swipe right or tap the wand to start</p>
+                          <p className="mt-auto inline-flex items-center gap-1 text-sm font-semibold text-white/80">Tap to start building <ChevronRight className="size-4" /></p>
                         </div>
                       </>
                     ) : (
                       <>
-                        <div className="relative h-[220px] shrink-0 overflow-hidden">
+                        <div className="relative h-[160px] shrink-0 overflow-hidden sm:h-[220px]">
                           <img src={c.photo} alt="" draggable={false} className="size-full object-cover" />
                           <div className="absolute inset-0 bg-gradient-to-t from-[#141010] via-[#141010]/10 to-transparent" />
                           <span className="absolute left-4 top-4 rounded-full bg-black/55 px-3 py-1 text-xs font-semibold backdrop-blur">{c.kind === 'mine' ? 'Your menu' : '7 days'}</span>
@@ -268,14 +286,19 @@ export default function MenuHome() {
                             {(c.kind === 'pack' && isMine(c)) || (c.kind === 'mine' && booked && c.due === 0) ? (
                               <span className="flex items-center gap-1.5 font-semibold text-[#34c759]"><Check className="size-4" /> {c.kind === 'mine' ? 'Included in your booking' : 'Your menu this week'}</span>
                             ) : (
-                              <span className="text-white/45">7 days · {mealsLabel(c.meals).toLowerCase()}</span>
+                              <span className="text-white/45">{mealsLabel(c.meals)}</span>
                             )}
-                            <span className="font-semibold text-white/70">Swipe → {acceptLabel(c).toLowerCase()}</span>
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-white/[0.08] py-1 pl-3 pr-2 font-semibold text-white ring-1 ring-white/10">See full week <ChevronRight className="size-3.5" /></span>
                           </div>
                         </div>
                       </>
                     )}
 
+                    {isTop && hint && !drag.active && (
+                      <span className="pointer-events-none absolute inset-x-0 top-[44%] z-10 mx-auto flex w-fit items-center gap-3 rounded-full bg-black/70 px-4 py-2 text-xs font-semibold text-white backdrop-blur">
+                        <span className="text-white/70">← Skip</span><span className="h-3 w-px bg-white/25" /><span>Tap to open</span><span className="h-3 w-px bg-white/25" /><span className="text-[#5ee07f]">Book →</span>
+                      </span>
+                    )}
                     {isTop && (
                       <>
                         <span className="pointer-events-none absolute left-5 top-24 -rotate-12 rounded-lg border-[3px] border-[#34c759] bg-black/30 px-3 py-1 text-xl font-black uppercase tracking-wider text-[#34c759]" style={{ opacity: like }}>{acceptLabel(c)}</span>
@@ -290,21 +313,28 @@ export default function MenuHome() {
 
           {/* Actions */}
           {!done && top && (
-            <div className="mt-6 flex items-center justify-center gap-4">
-              <button type="button" onClick={() => swipe(-1)} aria-label="Next menu" className="grid size-14 place-items-center rounded-full bg-white/[0.07] text-white ring-1 ring-white/15 transition hover:scale-105 hover:bg-white/10 active:scale-95">
-                <X className="size-6" strokeWidth={2.6} />
+            <div className="mt-7 flex items-start justify-center gap-6">
+              <button type="button" onClick={() => swipe(-1)} className="group flex w-16 flex-col items-center gap-1.5 text-[11px] font-semibold text-white/55">
+                <span className="grid size-14 place-items-center rounded-full bg-white/[0.07] text-white ring-1 ring-white/15 transition group-hover:scale-105 group-hover:bg-white/10 group-active:scale-95"><X className="size-6" strokeWidth={2.6} /></span>
+                Skip
               </button>
               {top.kind !== 'create' ? (
-                <Link to={top.kind === 'mine' ? '/menu/view/mine' : `/menu/view/${top.pack.id}`} aria-label="See the full menu" className="grid size-11 place-items-center rounded-full bg-white/[0.07] text-white/75 ring-1 ring-white/15 transition hover:scale-105 hover:bg-white/10 active:scale-95">
-                  <Eye className="size-5" />
+                <Link to={top.kind === 'mine' ? '/menu/view/mine' : `/menu/view/${top.pack.id}`} className="group flex w-16 flex-col items-center gap-1.5 pt-1.5 text-[11px] font-semibold text-white/55">
+                  <span className="grid size-11 place-items-center rounded-full bg-white/[0.07] text-white/80 ring-1 ring-white/15 transition group-hover:scale-105 group-hover:bg-white/10 group-active:scale-95"><Eye className="size-5" /></span>
+                  Full week
                 </Link>
-              ) : <span className="size-11" aria-hidden />}
-              <button type="button" disabled={busy || (top.kind === 'pack' && isMine(top))} onClick={() => swipe(1)} aria-label={acceptLabel(top)} className="bg-brand-grad grid size-14 place-items-center rounded-full text-white shadow-[0_14px_28px_-12px_rgba(222,59,44,0.9)] transition hover:scale-105 active:scale-95 disabled:opacity-50">
-                {top.kind === 'create' ? <Plus className="size-7" strokeWidth={2.6} /> : <Check className="size-7" strokeWidth={2.8} />}
+              ) : <span className="w-16" aria-hidden />}
+              <button type="button" disabled={busy || (top.kind === 'pack' && isMine(top))} onClick={() => swipe(1)} className="group flex w-16 flex-col items-center gap-1.5 text-[11px] font-semibold text-white/80 disabled:opacity-50">
+                <span className="bg-brand-grad grid size-14 place-items-center rounded-full text-white shadow-[0_14px_28px_-12px_rgba(222,59,44,0.9)] transition group-hover:scale-105 group-active:scale-95">{top.kind === 'create' ? <Plus className="size-7" strokeWidth={2.6} /> : <Check className="size-7" strokeWidth={2.8} />}</span>
+                <span className="whitespace-nowrap">{acceptLabel(top)}</span>
               </button>
             </div>
           )}
-          {!done && top && <p className="mt-3 text-center text-xs text-white/45">{acceptLabel(top)} · swipe or use the buttons · {idx + 1} of {cards.length}</p>}
+          {!done && top && (
+            <div className="mt-4 flex justify-center gap-1.5" aria-label={`${idx + 1} of ${cards.length}`}>
+              {cards.map((c, i) => <span key={c.key} className={cx('h-1 rounded-full transition-all', i === idx ? 'w-5 bg-white' : 'w-1.5 bg-white/20')} />)}
+            </div>
+          )}
 
           {/* Jump to any card */}
           <div className="no-scrollbar mt-8 flex gap-2 overflow-x-auto sm:justify-center">

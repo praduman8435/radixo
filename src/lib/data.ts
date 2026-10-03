@@ -93,6 +93,11 @@ export function addWalletMoney(userId: string, amount: number, note: string) {
   return api.insert('wallet_txns', { user_id: userId, amount: Math.round(amount), kind: 'admin', note: note || 'Added by the owner', ref_id: null })
 }
 
+/** Owner sets the login password for a staff/owner account (their own included). */
+export function setTeamPassword(userId: string, password: string) {
+  return api.rpc<null>('set_team_password', { p_user: userId, p_password: password })
+}
+
 export async function checkIn(userId: string, meal: Meal, date = today()) {
   const existing = await api.list('attendance', { eq: { user_id: userId, date, meal } })
   if (existing.length) return { already: true as const, row: existing[0] }

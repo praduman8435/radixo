@@ -9,7 +9,7 @@ interface BookingQuote {
 }
 interface ExtraQuote { kind: 'extra'; week_id: string; total: number; label: string }
 
-type DB = { tables: { [K in TableName]: Tables[K][] }; session: string | null }
+type DB = { tables: { [K in TableName]: Tables[K][] }; session: string | null; users: { id: string; email: string; password: string }[] }
 
 const uuid = () => crypto.randomUUID()
 const now = () => new Date().toISOString()
@@ -140,6 +140,18 @@ export function runLocalRpc(db: DB, fn: string, args: Record<string, unknown>): 
     r.status = 'cancelled'
     t.wallet_txns.push({ id: uuid(), user_id: uid, amount: -r.credit, kind: 'skip_cancelled', note: 'Coming after all', ref_id: r.id, created_at: now() })
     return r
+  }
+
+  if (fn === 'set_team_password') {
+    if (!isAdmin(db)) throw new Error('Only the owner can set team passwords')
+    const pw = String(args.p_password ?? '')
+    if (pw.length < 8) throw new Error('Use at least 8 characters')
+    const prof = t.profiles.find((p) => p.id === args.p_user)
+    if (!prof) throw new Error('Member not found')
+    if (prof.role === 'student') throw new Error('Make them staff first, then set a password')
+    const u = db.users.find((x) => x.id === prof.id)
+    if (u) u.password = pw
+    return null
   }
 
   throw new Error(`Unknown function ${fn}`)

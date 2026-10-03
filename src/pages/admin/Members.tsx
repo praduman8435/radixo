@@ -8,6 +8,7 @@ import { formatINR, mealsLabel, memberState, subLabel, type MemberState } from '
 import type { Profile, Role } from '../../lib/types'
 import { Avatar, Badge, Button, Card, EmptyState, ErrorNote, Modal, PageHeader, PageLoader, Segmented, Select } from '../../components/ui'
 import { WalletModal } from './Approvals'
+import { TeamPassword } from '../../components/TeamPassword'
 import { useToast } from '../../components/toast'
 import { useAuth } from '../../lib/auth'
 
@@ -140,7 +141,7 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
     setSaving(true)
     try {
       await api.update('profiles', profile.id, { role })
-      toast('Role updated')
+      toast(role === 'student' ? 'Role updated' : 'Role updated. Now set their login password below.')
       onChanged()
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not update', 'error')
@@ -212,6 +213,13 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
               </Select>
             </div>
             <Button variant="secondary" onClick={saveRole} loading={saving} disabled={role === profile.role}>Save role</Button>
+          </div>
+        )}
+
+        {me?.id !== profile.id && profile.role !== 'student' && (
+          <div className="rounded-xl border border-line p-3">
+            <p className="mb-2 text-sm text-muted">Team members log in at <b>Team login</b> with their number and this password.</p>
+            <TeamPassword userId={profile.id} phone={profile.phone} />
           </div>
         )}
       </div>

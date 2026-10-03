@@ -122,6 +122,13 @@ body {
 }
 .animate-float { animation: float 5s ease-in-out infinite; }
 
+@keyframes deck-hint {
+  0%, 55%, 100% { transform: translateX(0) rotate(0); }
+  65% { transform: translateX(-26px) rotate(-2.5deg); }
+  80% { transform: translateX(26px) rotate(2.5deg); }
+}
+.deck-hint { animation: deck-hint 2.6s ease-in-out 0.6s 2; }
+
 @keyframes chef-steam {
   0% { opacity: 0; transform: translateY(8px); }
   35% { opacity: 1; }
@@ -153,7 +160,7 @@ body {
 @keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(0.6) rotate(0deg); } 50% { opacity: 1; transform: scale(1.1) rotate(25deg); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .chef-steam, .chef-bob { animation: none !important; opacity: 1; }
+  .chef-steam, .chef-bob, .deck-hint { animation: none !important; opacity: 1; }
   .reveal-draw, .reveal-card, .twinkle { opacity: 1 !important; clip-path: none !important; transform: none !important; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

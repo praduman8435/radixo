@@ -7,11 +7,15 @@ import { formatINR } from '../../lib/logic'
 import type { Settings } from '../../lib/types'
 import { Button, Card, ErrorNote, Input, PageHeader, PageLoader } from '../../components/ui'
 import { useToast } from '../../components/toast'
+import { TeamPassword } from '../../components/TeamPassword'
+import { useAuth } from '../../lib/auth'
+import { formatPhone } from '../../lib/phone'
 
 const pct = (v: string) => Math.min(50, Math.max(0, Math.round(Number(v) || 0)))
 
 export default function SettingsPage() {
   const toast = useToast()
+  const { profile: me } = useAuth()
   const q = useAsync(() => loadSettings(), [])
   const [s, setS] = useState<Settings | null>(null)
   const [saving, setSaving] = useState(false)
@@ -73,6 +77,14 @@ export default function SettingsPage() {
             </p>
             <Input label="“Not coming” notice (hours)" type="number" min={0} max={96} value={s.skip_notice_hours} onChange={(e) => set('skip_notice_hours', Math.min(96, Math.max(0, Math.round(Number(e.target.value) || 0))))} hint="Counted back from midnight of the first day away. The value of those meals goes to the student’s wallet." />
           </Card>
+
+          {me && (
+            <Card className="space-y-3 p-5">
+              <h2 className="font-display text-lg font-bold">Your login</h2>
+              <p className="text-sm text-muted">You log in at Team login with {formatPhone(me.phone)} and this password.</p>
+              <TeamPassword userId={me.id} phone={me.phone} self />
+            </Card>
+          )}
 
           <Card className="space-y-4 p-5">
             <h2 className="font-display text-lg font-bold">Kitchen maths</h2>
