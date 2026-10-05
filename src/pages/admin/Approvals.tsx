@@ -129,7 +129,7 @@ export default function Approvals() {
 
       {tab === 'waiting' && (
         waiting.length === 0 ? (
-          <Card><EmptyState icon={<Inbox className="size-6" />} title="All caught up">New payments show here as students book.</EmptyState></Card>
+          <Card><EmptyState icon={<Inbox className="size-6" />} title="All caught up">New payments show here as members book.</EmptyState></Card>
         ) : (
           <>
             <p className="mb-3 text-sm text-muted"><span className="font-semibold text-ink">{waiting.length} payment{waiting.length === 1 ? '' : 's'}</span> · {formatINR(toCheck)} to find in your UPI app</p>
@@ -142,7 +142,7 @@ export default function Approvals() {
 
       {tab === 'away' && (
         <div className="space-y-5">
-          <p className="text-sm text-muted">Students mark these themselves, at least {ops.settings.skip_notice_hours} hours ahead. The meals&rsquo; value goes to their wallet, and the kitchen counts are already lower.</p>
+          <p className="text-sm text-muted">Members mark these themselves, at least {ops.settings.skip_notice_hours} hours ahead. The meals&rsquo; value goes to their wallet, and the kitchen counts are already lower.</p>
           <section>
             <h3 className="mb-2 text-sm font-semibold">Coming up</h3>
             {upcoming.length === 0 ? <Card className="p-4 text-sm text-muted">Nobody is away.</Card> : <Card className="divide-y divide-line overflow-hidden"><ul className="divide-y divide-line">{upcoming.map(awayRow)}</ul></Card>}
@@ -165,7 +165,7 @@ export default function Approvals() {
           <Button variant="danger" loading={busy === rejecting?.id} onClick={() => rejecting && run(rejecting.id, () => rejectPayment(rejecting, note || 'Payment not found'), 'Payment rejected').then(() => setRejecting(null))}>Reject</Button>
         </>}
       >
-        <p className="mb-3 text-sm text-muted">The student sees this note in their payments.{rejecting && rejecting.wallet_used > 0 ? ` The ${formatINR(rejecting.wallet_used)} they used from their wallet goes back.` : ''}</p>
+        <p className="mb-3 text-sm text-muted">The member sees this note in their payments.{rejecting && rejecting.wallet_used > 0 ? ` The ${formatINR(rejecting.wallet_used)} they used from their wallet goes back.` : ''}</p>
         <div className="mb-3 flex flex-wrap gap-2">
           {['UTR not found in our account', 'Amount doesn’t match', 'Duplicate payment'].map((r) => (
             <button key={r} type="button" onClick={() => setNote(r)} className={cx('h-8 rounded-full px-3 text-xs font-semibold ring-1', note === r ? 'bg-ink text-white ring-ink' : 'ring-line hover:bg-sand')}>{r}</button>
@@ -179,7 +179,7 @@ export default function Approvals() {
   )
 }
 
-/** Cash at the counter, a refund or a correction: the money goes into the student's wallet and pays for their next booking. */
+/** Cash at the counter, a refund or a correction: the money goes into the member's wallet and pays for their next booking. */
 export function WalletModal({ open, onClose, ops, onDone, userId: fixedUser }: { open: boolean; onClose: () => void; ops: Awaited<ReturnType<typeof loadOps>>; onDone: () => void; userId?: string }) {
   const toast = useToast()
   const members = students(ops.profiles)

@@ -5,6 +5,8 @@ export type Meal = 'breakfast' | 'lunch' | 'snacks' | 'dinner'
 /** Service order through the day. */
 export const MEALS: Meal[] = ['breakfast', 'lunch', 'snacks', 'dinner']
 export type StayType = 'PG' | 'Hostel' | 'Rented flat' | 'Day scholar'
+/** How a stay type reads on screen (stored values stay the same). */
+export const STAY_LABEL: Record<StayType, string> = { PG: 'PG', Hostel: 'Hostel', 'Rented flat': 'Flat', 'Day scholar': 'Home' }
 
 export interface Profile {
   id: string

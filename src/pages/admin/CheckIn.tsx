@@ -277,7 +277,7 @@ function Scanner({ meal, count, expected, onClose, onScan }: { meal: Meal; count
         ) : (
           <>
             <div className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[68%] max-w-[320px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] ring-4 ring-white/90" aria-hidden />
-            <p className="absolute inset-x-0 bottom-8 text-center text-[15px] font-semibold text-white/90">Point at the student&rsquo;s QR pass</p>
+            <p className="absolute inset-x-0 bottom-8 text-center text-[15px] font-semibold text-white/90">Point at the dining pass QR</p>
           </>
         )}
 
@@ -315,7 +315,7 @@ function Scanner({ meal, count, expected, onClose, onScan }: { meal: Meal; count
             <div className="px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-3">
               <button type="button" onClick={(e) => { e.stopPropagation(); next() }} className="relative h-14 w-full overflow-hidden rounded-2xl bg-white text-lg font-bold text-ink">
                 {ok && <span className="absolute inset-y-0 left-0 bg-black/10" style={{ animation: `quote-progress ${AUTO_NEXT_MS}ms linear forwards` }} aria-hidden />}
-                <span className="relative">Next student</span>
+                <span className="relative">Next guest</span>
               </button>
             </div>
           </div>

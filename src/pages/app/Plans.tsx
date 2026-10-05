@@ -478,7 +478,7 @@ function HowItWorks() {
       {[
         ['Pick your menu', 'Ready-made or your own. Eat 4 days a week or 7, your call.'],
         ['Book it', '1 week, 1 month (5% off), 3 months (8% off) or 6 months (12% off).'],
-        ['Going home?', 'Mark the days 24 hours ahead and their value comes back to your wallet.'],
+        ['Away for a few days?', 'Mark them 24 hours ahead and their value comes back to your wallet.'],
       ].map(([h, b], i) => (
         <Panel key={h} className="p-4">
           <p className="text-xs font-semibold text-turmeric">0{i + 1}</p>

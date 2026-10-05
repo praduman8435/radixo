@@ -420,7 +420,7 @@ export function createSeed(): DemoDB {
   }
 
   const settings: Settings[] = [{
-    id: 1, upi_id: 'radixo.demo@upi', upi_name: 'Radixo Mess', whatsapp: '', address: '',
+    id: 1, upi_id: 'radixo.demo@upi', upi_name: 'Radixo Dining', whatsapp: '', address: '',
     breakfast_time: '7:30 – 9:30 AM', lunch_time: '12:00 – 3:00 PM', snacks_time: '5:00 – 6:00 PM', dinner_time: '7:30 – 10:30 PM', attendance_factor: 0.8, buffer_pct: 10, min_pause_days: 4,
     discount_1m: 5, discount_3m: 8, discount_6m: 12, skip_notice_hours: 24,
   }]

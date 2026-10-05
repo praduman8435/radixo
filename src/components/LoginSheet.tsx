@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth'
 import { api } from '../lib/backend'
 import { OTP_REQUIRED } from '../lib/config'
 import { cleanPhone, formatPhone, friendlyAuthError, isValidPhone } from '../lib/phone'
-import type { StayType } from '../lib/types'
+import { STAY_LABEL, type StayType } from '../lib/types'
 import { Button, cx } from './ui'
 
 type Step = 'phone' | 'otp' | 'name'
@@ -81,7 +81,7 @@ export function LoginFlow({ reason, onDone, compact, dark, hideLogo }: { reason?
     }
   }
 
-  const title = step === 'phone' ? 'Log in with your number' : step === 'otp' ? 'Enter the code' : 'Welcome to Radixo!'
+  const title = step === 'phone' ? 'Log in with your number' : step === 'otp' ? 'Enter the code' : 'Welcome to Radixo Dining'
   // Two looks: dark (login sheet, login page) and light (inline on light pages).
   const T = dark
     ? {
@@ -193,10 +193,10 @@ export function LoginFlow({ reason, onDone, compact, dark, hideLogo }: { reason?
             </div>
           </div>
           <div>
-            <p className={cx('text-[11px] font-semibold uppercase tracking-[0.12em]', T.label)}>Where do you stay?</p>
+            <p className={cx('text-[11px] font-semibold uppercase tracking-[0.12em]', T.label)}>Where do you live?</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {STAYS.map((st) => (
-                <button key={st} type="button" aria-pressed={stay === st} onClick={() => setStay(st)} className={cx('h-9 rounded-full px-3.5 text-sm font-semibold transition-colors', stay === st ? T.chipOn : T.chip)}>{st}</button>
+                <button key={st} type="button" aria-pressed={stay === st} onClick={() => setStay(st)} className={cx('h-9 rounded-full px-3.5 text-sm font-semibold transition-colors', stay === st ? T.chipOn : T.chip)}>{STAY_LABEL[st]}</button>
               ))}
             </div>
           </div>
@@ -204,7 +204,7 @@ export function LoginFlow({ reason, onDone, compact, dark, hideLogo }: { reason?
             <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="PG name / area (optional)" aria-label="PG name or area" className={cx(inputBase, 'text-[15px] font-medium', T.input)} />
           </div>
           {err && <p className={cx('text-sm font-medium', T.err)} role="alert">{err}</p>}
-          <Button type="submit" loading={busy} className="h-11 w-full rounded-full text-[15px]">Start eating well</Button>
+          <Button type="submit" loading={busy} className="h-11 w-full rounded-full text-[15px]">Take me to my table</Button>
         </form>
       )}
     </div>

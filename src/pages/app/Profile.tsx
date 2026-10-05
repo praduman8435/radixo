@@ -67,13 +67,13 @@ export default function Profile() {
           <span className="pointer-events-none absolute -right-16 -top-16 size-52 rounded-full bg-[radial-gradient(circle,rgba(201,52,28,0.35),transparent_65%)]" aria-hidden />
           <div className="relative flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/45">Meal pass</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/45">Dining pass</p>
               <p className="mt-1 truncate text-[18px] font-semibold">{p.full_name}</p>
             </div>
             <span className={cx('shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold', active ? 'bg-[#34c759]/15 text-[#5ee07f]' : 'bg-white/10 text-white/65')}>{status}</span>
           </div>
           <div className="relative mx-auto mt-5 w-fit rounded-2xl bg-white p-3">
-            <QR value={p.member_code} size={196} label={`Meal pass QR for ${p.member_code}`} className={cx(!active && 'opacity-40')} />
+            <QR value={p.member_code} size={196} label={`Dining pass QR for ${p.member_code}`} className={cx(!active && 'opacity-40')} />
           </div>
           <p className="relative mt-3 text-center text-[22px] font-bold tracking-[0.18em] tabular">{p.member_code}</p>
           <p className="relative mt-1 flex items-center justify-center gap-1.5 text-xs text-white/45"><Sun className="size-3.5" /> Show this at the counter</p>

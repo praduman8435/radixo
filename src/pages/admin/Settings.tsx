@@ -48,7 +48,7 @@ export default function SettingsPage() {
         <Card className="space-y-4 p-5">
           <h2 className="font-display text-lg font-bold">Payments &amp; contact</h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Input label="UPI ID" value={s.upi_id} onChange={(e) => set('upi_id', e.target.value.trim())} placeholder="radixo@okaxis" hint="Students pay to this ID." />
+            <Input label="UPI ID" value={s.upi_id} onChange={(e) => set('upi_id', e.target.value.trim())} placeholder="radixo@okaxis" hint="Members pay to this ID." />
             <Input label="Name on UPI" value={s.upi_name} onChange={(e) => set('upi_name', e.target.value)} />
           </div>
           <Input label="WhatsApp number" value={s.whatsapp} onChange={(e) => set('whatsapp', e.target.value)} placeholder="919800000000" hint="With country code, digits only." />
@@ -65,7 +65,7 @@ export default function SettingsPage() {
           <Card className="space-y-4 p-5">
             <div>
               <h2 className="font-display text-lg font-bold">Booking discounts</h2>
-              <p className="mt-1 text-sm text-muted">Students book any menu for 1 week, 1 month, 3 months or 6 months. Longer bookings get this much off.</p>
+              <p className="mt-1 text-sm text-muted">Members book any menu for 1 week, 1 month, 3 months or 6 months. Longer bookings get this much off.</p>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <Input label="1 month %" type="number" min={0} max={50} value={s.discount_1m} onChange={(e) => set('discount_1m', pct(e.target.value))} />
@@ -75,7 +75,7 @@ export default function SettingsPage() {
             <p className="rounded-xl bg-sand px-3 py-2 text-xs text-muted">
               A ₹999/week menu: {formatINR(999)} · 1 month {formatINR(bookingTotal(999, 4, s.discount_1m))} · 3 months {formatINR(bookingTotal(999, 13, s.discount_3m))} · 6 months {formatINR(bookingTotal(999, 26, s.discount_6m))}
             </p>
-            <Input label="“Not coming” notice (hours)" type="number" min={0} max={96} value={s.skip_notice_hours} onChange={(e) => set('skip_notice_hours', Math.min(96, Math.max(0, Math.round(Number(e.target.value) || 0))))} hint="Counted back from midnight of the first day away. The value of those meals goes to the student’s wallet." />
+            <Input label="“Not coming” notice (hours)" type="number" min={0} max={96} value={s.skip_notice_hours} onChange={(e) => set('skip_notice_hours', Math.min(96, Math.max(0, Math.round(Number(e.target.value) || 0))))} hint="Counted back from midnight of the first day away. The value of those meals goes to the member’s wallet." />
           </Card>
 
           {me && (

@@ -61,7 +61,7 @@ export default function Members() {
 
   function exportCsv() {
     const lines = [['Name', 'Code', 'Phone', 'Email', 'Role', 'Stay', 'Area', 'Status', 'Booked till', 'Wallet', 'Meals', 'Address']]
-    for (const { p, s: st } of shown) lines.push([p.full_name, p.member_code, p.phone, p.email, p.role, p.stay_type, p.area, st.kind, 'sub' in st ? st.sub.end_date : '', String(ops.walletOf(p.id)), p.meal_mode === 'tiffin' ? 'Tiffin' : 'At the mess', p.address ?? ''])
+    for (const { p, s: st } of shown) lines.push([p.full_name, p.member_code, p.phone, p.email, p.role, p.stay_type, p.area, st.kind, 'sub' in st ? st.sub.end_date : '', String(ops.walletOf(p.id)), p.meal_mode === 'tiffin' ? 'Tiffin' : 'Dine-in', p.address ?? ''])
     const csv = lines.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -80,7 +80,7 @@ export default function Members() {
     return true
   }).length
   const FILTERS: { value: Filter; label: string }[] = [
-    { value: 'all', label: 'All students' }, { value: 'active', label: 'Active' }, { value: 'ending', label: 'Ending soon' },
+    { value: 'all', label: 'All members' }, { value: 'active', label: 'Active' }, { value: 'ending', label: 'Ending soon' },
     { value: 'pending', label: 'Payment pending' }, { value: 'inactive', label: 'No booking' }, { value: 'team', label: 'Team' },
   ]
   const weekLabel = (sel: (typeof rows)[number]['cur']) => (sel ? (sel.mode === 'pack' ? packName(sel.pack_id) : 'Own menu') : '—')
@@ -89,7 +89,7 @@ export default function Members() {
     <div className="animate-rise">
       <PageHeader
         title="Members"
-        subtitle={`${countFor('all')} students · ${countFor('active')} active`}
+        subtitle={`${countFor('all')} members · ${countFor('active')} active`}
         actions={<Button variant="secondary" onClick={exportCsv} aria-label="Export CSV"><Download className="size-4" /><span className="hidden sm:inline">Export CSV</span></Button>}
       />
       <div className="mb-4 space-y-3">
@@ -251,7 +251,7 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
           <div className="flex flex-wrap items-end gap-3 rounded-xl border border-line p-3">
             <div className="min-w-0 flex-1 sm:max-w-xs">
               <Select label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                <option value="student">Student</option>
+                <option value="student">Member</option>
                 <option value="staff">Staff (check-in, prep, wastage)</option>
                 <option value="admin">Admin (everything)</option>
               </Select>

@@ -157,7 +157,7 @@ export default function Dishes() {
               </Select>
               <Input label="Price (₹ per serving)" type="number" inputMode="numeric" min={1} value={editing.price || ''} onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })} />
             </div>
-            <Input label="Short description" value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="Shown to students under the dish name" />
+            <Input label="Short description" value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="Shown to members under the dish name" />
             <Input label="Photo link (optional)" value={editing.image_url} onChange={(e) => setEditing({ ...editing, image_url: e.target.value })} placeholder="/dishes/paneer.jpg or https://…" hint="Leave empty to show an illustrated tile." />
             <div className="divide-y divide-line rounded-xl border border-line">
               <label className="flex cursor-pointer items-center justify-between gap-3 px-3.5 py-3">
@@ -165,7 +165,7 @@ export default function Dishes() {
                 <input type="checkbox" className="size-5 accent-brand" checked={editing.is_active} onChange={(e) => setEditing({ ...editing, is_active: e.target.checked })} />
               </label>
               <label className="flex cursor-pointer items-center justify-between gap-3 px-3.5 py-3">
-                <span><span className="block text-sm font-semibold">Special dish</span><span className="block text-xs text-muted">Paneer, sweets: marked as special for students</span></span>
+                <span><span className="block text-sm font-semibold">Special dish</span><span className="block text-xs text-muted">Paneer, sweets: marked as special for members</span></span>
                 <input type="checkbox" className="size-5 accent-brand" checked={editing.is_premium} onChange={(e) => setEditing({ ...editing, is_premium: e.target.checked })} />
               </label>
             </div>

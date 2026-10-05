@@ -80,7 +80,7 @@ export default function MenuEditor() {
   const header = (
     <PageHeader
       title="Weekly menu"
-      subtitle="Add the dishes students can choose for every meal."
+      subtitle="Add the dishes members can choose for every meal."
       actions={<Button size="sm" onClick={() => setNewOpen(true)}><CalendarPlus className="size-4" /> New week</Button>}
     />
   )
@@ -90,7 +90,7 @@ export default function MenuEditor() {
     return (
       <div>
         {header}
-        <Card><EmptyState icon={<CalendarPlus className="size-6" />} title="No weeks yet" action={<Button onClick={() => setNewOpen(true)}>Create the first week</Button>}>Create a week, add its dishes, then publish it so students can book.</EmptyState></Card>
+        <Card><EmptyState icon={<CalendarPlus className="size-6" />} title="No weeks yet" action={<Button onClick={() => setNewOpen(true)}>Create the first week</Button>}>Create a week, add its dishes, then publish it so members can book.</EmptyState></Card>
         {newWeek}
       </div>
     )
@@ -125,7 +125,7 @@ export default function MenuEditor() {
       {/* Status */}
       <Card className="mb-5 flex items-center gap-3 p-3.5 sm:p-4">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">{published ? 'Published · students can book it' : 'Draft · students can’t see it yet'}</p>
+          <p className="text-sm font-semibold">{published ? 'Published · members can book it' : 'Draft · members can’t see it yet'}</p>
           <p className="mt-0.5 text-xs text-muted">{chose} member{chose === 1 ? '' : 's'} chose a menu · meals lock 24 h before</p>
         </div>
         <Button size="sm" variant={published ? 'secondary' : 'primary'} onClick={() => updateWeek({ status: published ? 'draft' : 'published' }, published ? 'Week unpublished' : 'Week published')}>
@@ -154,7 +154,7 @@ export default function MenuEditor() {
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-[17px] font-semibold">{DAY_NAMES[day]} <span className="font-normal text-muted">{formatDate(addDays(week.week_start, day))}</span></h2>
-              <p className="text-xs text-muted"><Star className="mr-0.5 inline size-3 fill-turmeric text-turmeric" /> = default dish, served if a student doesn&rsquo;t choose</p>
+              <p className="text-xs text-muted"><Star className="mr-0.5 inline size-3 fill-turmeric text-turmeric" /> = default dish, served if a member doesn&rsquo;t choose</p>
             </div>
             {items.some((it) => it.day === day) && (
               <Button size="sm" variant="secondary" onClick={() => setCopyOpen(true)}><Copy className="size-4" /> <span className="hidden sm:inline">Copy to other days</span><span className="sm:hidden">Copy</span></Button>

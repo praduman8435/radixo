@@ -167,7 +167,7 @@ export default function Overview() {
               })}
             </ul>
           )}
-          {nextWeek && <p className="mt-4 border-t border-line pt-3 text-xs text-muted">Menu {formatWeekRange(nextWeek.week_start)}: {nextWeek.status === 'published' ? 'published. Students can book each meal up to 24 hours before it.' : 'not published yet. Publish it so students can plan ahead.'}</p>}
+          {nextWeek && <p className="mt-4 border-t border-line pt-3 text-xs text-muted">Menu {formatWeekRange(nextWeek.week_start)}: {nextWeek.status === 'published' ? 'published. Members can book each meal up to 24 hours before it.' : 'not published yet. Publish it so members can plan ahead.'}</p>}
         </Card>
       </div>
     </div>

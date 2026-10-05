@@ -15,7 +15,7 @@ type LoginRole = 'user' | 'owner' | 'staff'
 
 const ROLE_COPY: Record<LoginRole, { title: string; sub: string; heading: string; hint: string; allowed: Role[]; deny: string; missing: string }> = {
   user: { title: 'Welcome back', sub: '', heading: 'Login as User', hint: '', allowed: ['student', 'staff', 'admin'], deny: '', missing: '' },
-  owner: { title: 'Owner login', sub: 'Menus, payments, members and settings.', heading: 'Log in with your password', hint: 'Owners use a password, not an OTP.', allowed: ['admin'], deny: 'This number isn’t an owner account. Students log in from the student page.', missing: 'Wrong number or password. If you haven’t set up the owner account yet, see the README → “Create the owner account”.' },
+  owner: { title: 'Owner login', sub: 'Menus, payments, members and settings.', heading: 'Log in with your password', hint: 'Owners use a password, not an OTP.', allowed: ['admin'], deny: 'This number isn’t an owner account. Members log in from the member login.', missing: 'Wrong number or password. If you haven’t set up the owner account yet, see the README → “Create the owner account”.' },
   staff: { title: 'Counter staff', sub: 'Check-in, kitchen prep and wastage.', heading: 'Log in with your password', hint: 'The owner creates your account and password.', allowed: ['staff', 'admin'], deny: 'This number isn’t a staff account. Ask the owner to add you as staff.', missing: 'Wrong number or password. Ask the owner to check your account.' },
 }
 
@@ -26,7 +26,7 @@ const homeFor = (role: Role) => (role === 'student' ? '/' : role === 'staff' ? '
 export function Welcome() {
   const { profile, loading, signOut } = useAuth()
   return (
-    <DarkShell title="Radixo" subtitle="Student meals · build your own menu" back="/" link={{ to: '/menu', label: 'Browse menus' }}>
+    <DarkShell title="Radixo" subtitle="Dining · chef-cooked meals, built your way" back="/" link={{ to: '/menu', label: 'Browse menus' }}>
       <div className="mt-auto w-full space-y-3 pt-12">
         {!loading && profile ? (
           <DarkCard>
@@ -38,7 +38,7 @@ export function Welcome() {
         ) : (
           <>
             <Link to="/login" className="animate-rise bg-brand-grad flex h-12 w-full items-center justify-center rounded-full text-[15px] font-semibold transition hover:brightness-110 active:scale-[0.99]">
-              Continue as student
+              Continue to Radixo Dining
             </Link>
             <p className="pt-4 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-white/35">Radixo team</p>
             <div className="grid grid-cols-2 gap-3">
@@ -209,7 +209,7 @@ export function RoleLogin() {
   const wa = settings.data?.whatsapp
 
   return (
-    <DarkShell title={copy.title} subtitle={copy.sub} link={{ to: '/login', label: 'Student login' }}>
+    <DarkShell title={copy.title} subtitle={copy.sub} link={{ to: '/login', label: 'Member login' }}>
       <DarkCard>
         <h2 className="text-[18px] font-semibold">{copy.heading}</h2>
         <p className="mt-1 text-sm text-white/50">{copy.hint}</p>
@@ -259,7 +259,7 @@ export function UserLogin() {
   const next = params.get('next') || '/'
   if (!loading && profile?.full_name && profile.role === 'student') return <Navigate to={next} replace />
   return (
-    <DarkShell title="Welcome back" subtitle="Your menu, your QR pass, your plan." back="/" link={{ to: '/menu', label: 'Browse menus' }}>
+    <DarkShell title="Welcome back" subtitle="Your table is ready. Your menu, your dining pass, your bookings." back="/" link={{ to: '/menu', label: 'Browse menus' }}>
       <DarkCard>
         <LoginFlow dark compact hideLogo onDone={() => nav(next, { replace: true })} />
       </DarkCard>

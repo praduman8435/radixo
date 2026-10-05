@@ -1,10 +1,10 @@
-# Radixo — student mess app
+# Radixo Dining
 
-A web app for running Radixo student mess outlets. Students pick a ready-made weekly menu or build their own, book it for 1 week to 6 months, pay by UPI, and show a QR pass at the counter. The admin side runs the mess day to day.
+A web app for running Radixo Dining outlets: chef-cooked, home-style meals for anyone nearby, from students to working professionals. Members pick a chef's week or build their own plate, book it for 1 week to 6 months, pay by UPI, and dine in with a QR dining pass or get a tiffin at the same price. The admin side runs the kitchen day to day.
 
 ## What's in it
 
-**Students** (phone-first, no login needed to browse)
+**Members** (phone-first, no login needed to browse)
 - **Home:** live "serving now" status, today's meals, ready-made weeks, the "build your own" story, booking lengths with their discounts, the chef story, timings with directions, FAQ
 - **Menus:** a swipe deck of ready-made weekly menus (each with its own price), or **build your own**: day by day, add dishes for breakfast, lunch, snacks and dinner from the kitchen's options, with a live total. Eat 4 days a week or 7, at any budget
 - **Login only when needed** (saving or booking a menu, paying, profile): mobile number → OTP → name. With `VITE_OTP_REQUIRED=false` (the default) the code isn't checked and can be skipped

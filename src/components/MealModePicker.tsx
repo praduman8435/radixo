@@ -2,10 +2,10 @@ import { Package, UtensilsCrossed } from 'lucide-react'
 import type { MealMode } from '../lib/types'
 import { cx } from './ui'
 
-/** Eat at the mess or get a tiffin: same price, no delivery charge. */
+/** Dine in or get a tiffin: same price, no delivery charge. */
 export function MealModePicker({ mode, address, onMode, onAddress, error }: { mode: MealMode; address: string; onMode: (m: MealMode) => void; onAddress: (a: string) => void; error?: string }) {
   const opts: { v: MealMode; title: string; sub: string; icon: typeof Package }[] = [
-    { v: 'dine', title: 'Eat at the mess', sub: 'Show your QR at the counter', icon: UtensilsCrossed },
+    { v: 'dine', title: 'Dine with us', sub: 'Show your dining pass at the counter', icon: UtensilsCrossed },
     { v: 'tiffin', title: 'Tiffin', sub: 'Packed and delivered · same price', icon: Package },
   ]
   return (

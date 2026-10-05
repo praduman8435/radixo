@@ -104,10 +104,10 @@ function Hero({ name, live, next, settings, fromPrice, chips }: { name?: string;
             {live ? <><span className="pulse-dot size-1.5 rounded-full bg-[#34c759]" /> Serving {MEAL_NAME[live].toLowerCase()} now · {timesOf(settings)[live]}</> : <><Clock3 className="size-3.5" /> Next up: {MEAL_NAME[next]} · {timesOf(settings)[next]}</>}
           </p>
           <h1 className="animate-rise mt-5 font-display text-[34px] font-bold leading-[1.1] sm:text-[46px] lg:text-[52px]" style={{ animationDelay: '60ms' }}>
-            {name ? <>Hey {name}, <span className="font-script font-normal text-brand-grad">what&rsquo;s on your plate?</span></> : <>Ghar jaisa khana, <span className="whitespace-nowrap font-script font-normal text-brand-grad">your way.</span></>}
+            {name ? <>Hey {name}, <span className="font-script font-normal text-brand-grad">what&rsquo;s on your plate?</span></> : <>Ghar ka swaad, <span className="whitespace-nowrap font-script font-normal text-brand-grad">served beautifully.</span></>}
           </h1>
           <p className="animate-rise mt-4 max-w-md text-[15px] leading-relaxed text-white/65 sm:text-base" style={{ animationDelay: '120ms' }}>
-            Choose a ready-made week or build your own, dish by dish. Freshly cooked student meals from {formatINR(fromPrice)} a meal.
+            Radixo Dining is a chef-led kitchen for people who&rsquo;d rather eat well than eat out. Pick a chef&rsquo;s week or build your own plate, dish by dish. Dine with us or get it in a tiffin, from {formatINR(fromPrice)} a meal.
           </p>
           <div className="animate-rise mt-7 flex flex-wrap gap-2.5" style={{ animationDelay: '180ms' }}>
             <Link to="/menu/create" className="bg-brand-grad inline-flex h-11 items-center gap-2 rounded-full px-5 text-[15px] font-semibold shadow-[0_10px_24px_-10px_rgba(222,59,44,0.8)] transition hover:brightness-110 active:scale-[0.98]">
@@ -162,10 +162,10 @@ function StoryCollage() {
 }
 
 const QUOTES: { text: string; by: string }[] = [
-  { text: 'Ghar ka swaad, college ke paas.', by: 'Cooked fresh, every morning' },
-  { text: 'Exams are hard. Dinner shouldn’t be.', by: 'Hot food, on time, every day' },
+  { text: 'Ghar ka swaad, without going home.', by: 'Cooked fresh every morning' },
+  { text: 'Long day? Dinner’s already handled.', by: 'Hot, on time, every day' },
   { text: 'Your plate, your rules, every single week.', by: 'Build your own menu' },
-  { text: 'Fewer Maggi nights, more real meals.', by: 'Four meals a day, if you want' },
+  { text: 'Skip the delivery apps. Sit down to real food.', by: 'Dine in, or take a tiffin' },
   { text: 'Made with care, like it’s for family.', by: 'From the Radixo kitchen' },
 ]
 const QUOTE_MS = 5000
@@ -263,7 +263,8 @@ const FAQ: [string, string][] = [
   ['How does building my own menu work?', 'For every meal the kitchen offers a few dishes. Add the ones you want for each day and the total updates as you go. Prices are per serving and include GST.'],
   ['How late can I book or change?', 'Up to 24 hours before each meal. Book today and you can start from the next meal that’s at least 24 hours away.'],
   ['Can I book for longer?', 'Yes. Book any menu for 1 week, 1 month, 3 months or 6 months. Longer bookings cost less per week, and your menu carries over each week. Change any meal up to 24 hours before it.'],
-  ['What if I go home for a few days?', 'Mark the days you’re not coming, at least 24 hours before. The full value of those meals goes to your wallet and pays for your next booking automatically.'],
+  ['Can I eat in, or get it delivered?', 'Both, at the same price. Dine with us using your dining pass, or get every meal packed in a steel tiffin and delivered nearby, with no delivery charge.'],
+  ['What if I’m away for a few days?', 'Mark the days you’re not coming, at least 24 hours before. The full value of those meals goes to your wallet and pays for your next booking automatically.'],
   ['How do I pay?', 'By UPI: scan the QR or open your UPI app, then paste the reference number. Cash at the counter goes into your wallet.'],
 ]
 
@@ -381,7 +382,7 @@ export default function Home() {
       {/* Ready-made weeks */}
       {packs.length > 0 && openWeek && (
         <Container className="mt-16">
-          <SectionHead eyebrow={`Week of ${formatWeekRange(openWeek.week_start)}`} title="Ready-made weeks" link={{ to: '/menu', label: 'All menus' }} />
+          <SectionHead eyebrow={`Week of ${formatWeekRange(openWeek.week_start)}`} title="Chef’s weeks" link={{ to: '/menu', label: 'All menus' }} />
           <Rail cols={packs.length >= 4 ? 4 : 3}>
             {packs.map((p, i) => (
               <article key={p.id} className={cx(railItem, 'group flex flex-col overflow-hidden rounded-2xl bg-white/[0.04] text-white ring-1 ring-white/10')}>
@@ -409,12 +410,12 @@ export default function Home() {
         <Container className="grid items-center gap-10 md:grid-cols-2 md:gap-16">
           <StoryCollage />
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#ff7a5c]">Build your own week</p>
-            <h2 className="mt-2 font-display text-[26px] font-bold leading-tight text-white sm:text-[34px]">Eat what you actually like.</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#ff7a5c]">The Radixo way</p>
+            <h2 className="mt-2 font-display text-[26px] font-bold leading-tight text-white sm:text-[34px]">A table that&rsquo;s set around you.</h2>
             <p className="mt-4 text-[15px] leading-relaxed text-white/65">
-              Most messes decide for you. At Radixo, the kitchen plans a few good options for every meal and you choose: rajma or dal tadka on Monday, paneer on Wednesday, skip what you never touch.
+              Most kitchens decide what you eat. Ours starts with you. Every day our chefs plan a few honest choices for each meal, like rajma or dal makhani on Monday and paneer on Wednesday, and you build the plate you actually want.
             </p>
-            <p className="mt-3 text-[15px] leading-relaxed text-white/65">You pay only for what&rsquo;s on your plate, and the kitchen cooks only what&rsquo;s been chosen, so less food goes to waste.</p>
+            <p className="mt-3 text-[15px] leading-relaxed text-white/65">Everything is cooked that morning, in small batches, from what&rsquo;s been chosen. You pay only for what&rsquo;s on your plate, and nothing good goes to waste.</p>
             <dl className="mt-6 grid grid-cols-3 gap-3 border-y border-white/10 py-4 text-center text-white">
               {[['7', 'days a week'], ['4', 'meals a day'], ['24 h', 'before a meal to book']].map(([v, l]) => (
                 <div key={l}><dt className="sr-only">{l}</dt><dd className="font-display text-xl font-bold">{v}</dd><dd className="text-xs text-white/50">{l}</dd></div>

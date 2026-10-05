@@ -48,7 +48,7 @@ export default function AdminFeedback() {
 
   return (
     <div className="animate-rise">
-      <PageHeader title="Feedback" subtitle="Reply to every complaint within 24 hours; students see your reply in the app." />
+      <PageHeader title="Feedback" subtitle="Reply to every complaint within 24 hours; members see your reply in the app." />
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat label="Rating, 14 days" value={overall ? overall.v.toFixed(1) : '—'} hint={overall ? `${overall.n} ratings` : 'No ratings yet'} icon={<Star className="size-4" />} tone="amber" />
         <Stat label="Weakest meal" value={lowest ? MEAL_NAME[lowest.m] : '—'} hint={lowest ? `${lowest.a!.v.toFixed(1)} from ${lowest.a!.n} ratings` : 'No ratings yet'} icon={<Star className="size-4" />} tone="red" />
@@ -80,7 +80,7 @@ export default function AdminFeedback() {
                       <input
                         value={replies[f.id] ?? ''}
                         onChange={(e) => setReplies({ ...replies, [f.id]: e.target.value })}
-                        placeholder="Reply to the student (what you changed)"
+                        placeholder="Reply to the member (what you changed)"
                         aria-label="Reply"
                         className="h-10 flex-1 rounded-xl border border-line bg-paper px-3 text-sm focus:border-brand focus:outline-none"
                       />

@@ -8,7 +8,7 @@ import { cancelSkip, loadDishMap, loadMember, markSkip } from '../../lib/data'
 import { addDays, diffDays, formatDate, today } from '../../lib/dates'
 import { skipAllowed, skipCredit } from '../../lib/booking'
 import { formatINR, paymentLabel } from '../../lib/logic'
-import type { StayType } from '../../lib/types'
+import { STAY_LABEL, type StayType } from '../../lib/types'
 import { cx } from '../../components/ui'
 import { useToast } from '../../components/toast'
 import { MealModePicker } from '../../components/MealModePicker'
@@ -103,14 +103,14 @@ export function AccountSettings() {
     <div className="space-y-4 text-white">
       <Panel id="not-coming">
         <h2 className="flex items-center gap-2 text-[17px] font-semibold"><CalendarX2 className="size-5 text-white/70" /> Not coming?</h2>
-        <p className="mt-1 text-sm text-white/55">Going home or away? Mark the days at least {notice} hours before. Their value goes to your wallet and is used on your next booking.</p>
+        <p className="mt-1 text-sm text-white/55">Away for a few days? Mark them at least {notice} hours before. Their value goes to your wallet and is used on your next booking.</p>
         {hasBooking ? (
           <form onSubmit={submitSkip} className="mt-4 space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div><label className={label} htmlFor="skip-from">From</label><input id="skip-from" type="date" className={field} value={skip.start} min={earliest} onChange={(e) => { setSkip({ ...skip, start: e.target.value, end: e.target.value > skip.end ? e.target.value : skip.end }); setSkipErr('') }} /></div>
               <div><label className={label} htmlFor="skip-to">To</label><input id="skip-to" type="date" className={field} value={skip.end} min={skip.start} onChange={(e) => { setSkip({ ...skip, end: e.target.value }); setSkipErr('') }} /></div>
             </div>
-            <input className={field} value={skip.reason} onChange={(e) => setSkip({ ...skip, reason: e.target.value })} placeholder="Reason (optional), e.g. going home for Diwali" aria-label="Reason" />
+            <input className={field} value={skip.reason} onChange={(e) => setSkip({ ...skip, reason: e.target.value })} placeholder="Reason (optional), e.g. travelling for Diwali" aria-label="Reason" />
             <div className="flex items-center justify-between gap-3 rounded-xl bg-black/20 px-4 py-3">
               <span className="text-sm text-white/60">{preview && preview.days > 0 ? `${preview.days} booked day${preview.days === 1 ? '' : 's'} · back to wallet` : 'No booked meals on these days'}</span>
               <span className="text-lg font-bold tabular text-[#34c759]">+ {formatINR(preview?.credit ?? 0)}</span>
@@ -172,7 +172,7 @@ export function AccountSettings() {
             <p className={label}>Where you stay</p>
             <div className="flex flex-wrap gap-2">
               {(['PG', 'Hostel', 'Rented flat', 'Day scholar'] as StayType[]).map((st) => (
-                <button key={st} type="button" aria-pressed={form.stay_type === st} onClick={() => setForm({ ...form, stay_type: st })} className={cx('h-9 rounded-full px-3.5 text-sm font-semibold transition-colors', form.stay_type === st ? 'bg-brand text-white' : 'bg-white/[0.06] text-white/75 ring-1 ring-white/12 hover:bg-white/10')}>{st}</button>
+                <button key={st} type="button" aria-pressed={form.stay_type === st} onClick={() => setForm({ ...form, stay_type: st })} className={cx('h-9 rounded-full px-3.5 text-sm font-semibold transition-colors', form.stay_type === st ? 'bg-brand text-white' : 'bg-white/[0.06] text-white/75 ring-1 ring-white/12 hover:bg-white/10')}>{STAY_LABEL[st]}</button>
               ))}
             </div>
           </div>

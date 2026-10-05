@@ -118,8 +118,8 @@ export function StudentLayout() {
               </Link>
             ) : (
               <div className="mx-4 mt-4 rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10">
-                <p className="text-sm font-semibold">Hungry already?</p>
-                <p className="mt-0.5 text-xs text-white/55">Log in with your mobile number to save menus and get your QR pass.</p>
+                <p className="text-sm font-semibold">Your table is waiting</p>
+                <p className="mt-0.5 text-xs text-white/55">Log in with your mobile number to save your menu and get your dining pass.</p>
                 <button type="button" onClick={() => { setDrawer(false); requireLogin() }} className="mt-3 inline-flex h-9 items-center rounded-full bg-white px-4 text-sm font-semibold text-ink">Log in</button>
               </div>
             )}
@@ -131,7 +131,7 @@ export function StudentLayout() {
                 { to: '/menu', label: 'This week’s menus', icon: BookOpen, end: true },
                 { to: '/menu/create', label: 'Build your own', icon: Plus, end: false },
                 { to: '/wallet', label: 'Wallet & bookings', icon: Wallet, end: false },
-                ...(user ? [{ to: '/profile', label: 'My QR pass', icon: QrCode, end: false }, { to: '/feedback', label: 'Rate a meal', icon: Star, end: false }] : []),
+                ...(user ? [{ to: '/profile', label: 'My dining pass', icon: QrCode, end: false }, { to: '/feedback', label: 'Rate a meal', icon: Star, end: false }] : []),
               ].map(({ to, label, icon: Icon, end }) => (
                 <NavLink key={to} to={to} end={end} className={({ isActive }) => cx('flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-colors', isActive ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/[0.05] hover:text-white')}>
                   {({ isActive }) => (
@@ -169,7 +169,7 @@ export function StudentLayout() {
                   <MessageCircle className="size-4" /> Chat with us
                 </a>
               )}
-              <span>© {new Date().getFullYear()} Radixo</span>
+              <span>© {new Date().getFullYear()} Radixo Dining</span>
               <Link to="/welcome" className="hover:text-white/80">Team login</Link>
             </div>
           </div>
