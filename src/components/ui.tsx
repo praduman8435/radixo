@@ -100,9 +100,9 @@ export function Select({ label, hint, error, className, id, children, ...rest }:
 }
 
 /** Pill-style single choice, used for meal, plan and filter toggles. */
-export function Segmented<T extends string>({ value, onChange, options, className, size = 'md' }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode }[]; className?: string; size?: 'sm' | 'md' }) {
+export function Segmented<T extends string>({ value, onChange, options, className, size = 'md', full }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode }[]; className?: string; size?: 'sm' | 'md'; full?: boolean }) {
   return (
-    <div role="radiogroup" className={cx('inline-flex rounded-xl bg-sand p-1 gap-1', className)}>
+    <div role="radiogroup" className={cx('no-scrollbar max-w-full gap-1 overflow-x-auto rounded-xl bg-sand p-1', full ? 'grid' : 'inline-flex', className)} style={full ? { gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` } : undefined}>
       {options.map((o) => (
         <button
           key={o.value}
@@ -111,7 +111,7 @@ export function Segmented<T extends string>({ value, onChange, options, classNam
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
           className={cx(
-            'rounded-lg font-semibold transition-colors',
+            'shrink-0 whitespace-nowrap rounded-lg font-semibold transition-colors',
             size === 'sm' ? 'px-2.5 h-8 text-sm' : 'px-3.5 h-9 text-sm',
             value === o.value ? 'bg-paper text-ink shadow-sm' : 'text-muted hover:text-ink',
           )}
@@ -149,7 +149,7 @@ export function EmptyState({ icon, title, children, action }: { icon?: ReactNode
   return (
     <div className="flex flex-col items-center text-center px-6 py-10">
       {icon && <div className="mb-3 grid size-12 place-items-center rounded-2xl bg-sand text-muted">{icon}</div>}
-      <p className="font-display text-lg font-bold">{title}</p>
+      <p className="text-[16px] font-semibold">{title}</p>
       {children && <div className="mt-1 max-w-sm text-sm text-muted">{children}</div>}
       {action && <div className="mt-4">{action}</div>}
     </div>
@@ -158,12 +158,12 @@ export function EmptyState({ icon, title, children, action }: { icon?: ReactNode
 
 export function PageHeader({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="font-display text-2xl font-bold sm:text-[28px]">{title}</h1>
-        {subtitle && <p className="mt-1 text-[15px] text-muted">{subtitle}</p>}
+    <div className="mb-5 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-[22px] font-semibold leading-tight tracking-tight sm:text-[26px]">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
-      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap justify-end gap-2">{actions}</div>}
     </div>
   )
 }
@@ -175,7 +175,7 @@ export function Stat({ label, value, hint, tone = 'neutral', icon }: { label: st
         {icon && <span className={cx('grid size-7 place-items-center rounded-lg', TONES[tone])}>{icon}</span>}
         {label}
       </div>
-      <p className="mt-2 font-display text-[28px] font-bold leading-none tabular">{value}</p>
+      <p className="mt-2 text-[26px] font-semibold leading-none tracking-tight tabular">{value}</p>
       {hint && <p className="mt-1.5 text-sm text-muted">{hint}</p>}
     </Card>
   )
@@ -199,18 +199,22 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className={cx('m-auto w-[calc(100%-24px)] rounded-3xl bg-paper p-0 text-ink shadow-pop backdrop:bg-ink/40 backdrop:backdrop-blur-[2px]', wide ? 'max-w-2xl' : 'max-w-md')}
+      className={cx(
+        'mx-0 mb-0 mt-auto w-full max-w-full rounded-t-3xl bg-paper p-0 text-ink shadow-pop backdrop:bg-ink/40 backdrop:backdrop-blur-[2px] sm:m-auto sm:w-[calc(100%-24px)] sm:rounded-3xl',
+        wide ? 'sm:max-w-2xl' : 'sm:max-w-md',
+      )}
     >
       {open && (
-        <div className="flex max-h-[85vh] flex-col">
-          <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
-            <h2 className="font-display text-lg font-bold">{title}</h2>
+        <div className="flex max-h-[90dvh] flex-col sm:max-h-[85vh]">
+          <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-line sm:hidden" aria-hidden />
+          <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+            <h2 className="text-[17px] font-semibold">{title}</h2>
             <button type="button" onClick={onClose} className="grid size-9 place-items-center rounded-full hover:bg-sand" aria-label="Close">
               <X className="size-5" />
             </button>
           </div>
           <div className="overflow-y-auto px-5 py-4">{children}</div>
-          {footer && <div className="flex justify-end gap-2 border-t border-line px-5 py-3">{footer}</div>}
+          {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-5 py-3" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>{footer}</div>}
         </div>
       )}
     </dialog>

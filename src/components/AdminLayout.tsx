@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, Outlet, Link } from 'react-router'
+import { NavLink, Outlet, Link, useLocation } from 'react-router'
 import {
   LayoutDashboard, CalendarDays, Salad, ChefHat, Users, BadgeCheck, ScanLine, MessagesSquare, Trash2, Settings, Menu, X, LogOut, ExternalLink,
 } from 'lucide-react'
@@ -23,6 +23,8 @@ export function AdminLayout() {
   const { profile, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const items = NAV.filter((n) => !n.admin || profile?.role === 'admin')
+  const { pathname } = useLocation()
+  const current = [...NAV].sort((a, b) => b.to.length - a.to.length).find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)))
 
   const nav = (
     <nav className="flex flex-col gap-0.5" aria-label="Admin">
@@ -33,7 +35,7 @@ export function AdminLayout() {
           end={end}
           onClick={() => setOpen(false)}
           className={({ isActive }) =>
-            cx('flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-colors', isActive ? 'bg-brand text-white shadow-sm' : 'text-ink/75 hover:bg-sand hover:text-ink')
+            cx('flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-colors', isActive ? 'bg-ink text-white' : 'text-ink/70 hover:bg-sand hover:text-ink')
           }
         >
           <Icon className="size-[18px]" />
@@ -71,13 +73,13 @@ export function AdminLayout() {
         </aside>
 
         <div className="min-w-0 flex-1">
-          <header className="no-print sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-cream/90 px-4 backdrop-blur lg:hidden">
-            <Link to="/admin"><Logo /></Link>
-            <button type="button" onClick={() => setOpen(true)} className="grid size-10 place-items-center rounded-xl hover:bg-sand" aria-label="Open menu">
+          <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-cream/95 px-4 backdrop-blur lg:hidden">
+            <button type="button" onClick={() => setOpen(true)} className="-ml-1.5 grid size-10 place-items-center rounded-xl hover:bg-sand" aria-label="Open menu">
               <Menu className="size-5" />
             </button>
+            <Link to="/admin" className="min-w-0 flex-1" aria-label="Radixo admin home"><Logo size="sm" /><span className="ml-1 align-middle text-[10px] font-bold uppercase tracking-wider text-muted">{current?.label ?? 'Admin'}</span></Link>
           </header>
-          <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+          <main className="mx-auto max-w-6xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pt-7">
             <Outlet />
           </main>
         </div>

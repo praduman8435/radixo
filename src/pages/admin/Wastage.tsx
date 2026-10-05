@@ -52,13 +52,11 @@ export default function Wastage() {
     <div className="animate-rise">
       <PageHeader title="Wastage" subtitle={`Weigh leftovers after every service. Target: ${TARGET}% or less of what was cooked.`} />
       <div className="grid gap-5 lg:grid-cols-[1fr_1.3fr]">
-        <div className="space-y-4">
-          <Card className="p-5">
+        <div className="min-w-0 space-y-4">
+          <Card className="p-4 sm:p-5">
             <form onSubmit={submit} className="space-y-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="w-44"><Input label="Date" type="date" value={f.date} max={today()} onChange={(e) => setF({ ...f, date: e.target.value })} /></div>
-                <Segmented value={f.meal} onChange={(meal) => setF({ ...f, meal })} options={MEAL_OPTIONS} />
-              </div>
+              <Input label="Date" type="date" value={f.date} max={today()} onChange={(e) => setF({ ...f, date: e.target.value })} />
+              <Segmented full value={f.meal} onChange={(meal) => setF({ ...f, meal })} options={MEAL_OPTIONS} />
               <div className="grid grid-cols-2 gap-3">
                 <Input label="Cooked (kg)" inputMode="decimal" value={f.cooked} onChange={(e) => setF({ ...f, cooked: e.target.value })} placeholder="e.g. 42" />
                 <Input label="Wasted (kg)" inputMode="decimal" value={f.wasted} onChange={(e) => setF({ ...f, wasted: e.target.value })} placeholder="e.g. 2.5" />

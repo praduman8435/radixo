@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Search, MessageCircle, Download } from 'lucide-react'
+import { Search, MessageCircle, Download, Phone, WalletCards } from 'lucide-react'
 import { api } from '../../lib/backend'
 import { useAsync } from '../../lib/useAsync'
 import { loadOps, whatsappLink, type Ops } from '../../lib/admin'
 import { addDays, formatDate, formatDateTime, mondayOf, today } from '../../lib/dates'
 import { formatINR, mealsLabel, memberState, subLabel, type MemberState } from '../../lib/logic'
 import type { Profile, Role } from '../../lib/types'
-import { Avatar, Badge, Button, Card, EmptyState, ErrorNote, Modal, PageHeader, PageLoader, Segmented, Select } from '../../components/ui'
+import { Avatar, Badge, Button, Card, EmptyState, ErrorNote, Modal, PageHeader, PageLoader, Select, cx } from '../../components/ui'
 import { WalletModal } from './Approvals'
 import { TeamPassword } from '../../components/TeamPassword'
 import { useToast } from '../../components/toast'
@@ -69,57 +69,100 @@ export default function Members() {
     a.click()
   }
 
+  const isStudent = (r: (typeof rows)[number]) => r.p.role === 'student'
+  const countFor = (f: Filter) => rows.filter((r) => {
+    if (f === 'team') return !isStudent(r)
+    if (!isStudent(r)) return false
+    if (f === 'active') return r.s.kind === 'active'
+    if (f === 'ending') return r.s.kind === 'active' && r.s.daysLeft <= 5
+    if (f === 'pending') return r.s.kind === 'pending'
+    if (f === 'inactive') return r.s.kind === 'none' || r.s.kind === 'expired'
+    return true
+  }).length
+  const FILTERS: { value: Filter; label: string }[] = [
+    { value: 'all', label: 'All students' }, { value: 'active', label: 'Active' }, { value: 'ending', label: 'Ending soon' },
+    { value: 'pending', label: 'Payment pending' }, { value: 'inactive', label: 'No booking' }, { value: 'team', label: 'Team' },
+  ]
+  const weekLabel = (sel: (typeof rows)[number]['cur']) => (sel ? (sel.mode === 'pack' ? packName(sel.pack_id) : 'Own menu') : '—')
+
   return (
     <div className="animate-rise">
-      <PageHeader title="Members" subtitle={`${rows.filter((r) => r.p.role === 'student').length} students · ${rows.filter((r) => r.s.kind === 'active').length} active`} actions={<Button variant="secondary" onClick={exportCsv}><Download className="size-4" /> Export CSV</Button>} />
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative w-full sm:w-72">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, code, phone, area" aria-label="Search members" className="h-10 w-full rounded-xl border border-line bg-paper pl-9 pr-3 text-sm focus:border-brand focus:outline-none" />
+      <PageHeader
+        title="Members"
+        subtitle={`${countFor('all')} students · ${countFor('active')} active`}
+        actions={<Button variant="secondary" onClick={exportCsv} aria-label="Export CSV"><Download className="size-4" /><span className="hidden sm:inline">Export CSV</span></Button>}
+      />
+      <div className="mb-4 space-y-3">
+        <div className="relative sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, code, phone or area" aria-label="Search members" className="h-11 w-full rounded-xl border border-line bg-paper pl-10 pr-3 text-[15px] focus:border-brand focus:outline-none" />
         </div>
-        <Segmented size="sm" value={filter} onChange={setFilter} options={[
-          { value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'ending', label: 'Ending soon' }, { value: 'pending', label: 'Pending' }, { value: 'inactive', label: 'No booking' }, { value: 'team', label: 'Team' },
-        ]} />
+        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
+          {FILTERS.map((f) => (
+            <button key={f.value} type="button" onClick={() => setFilter(f.value)} aria-pressed={filter === f.value} className={cx('inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors', filter === f.value ? 'bg-ink text-white' : 'bg-paper text-ink/75 ring-1 ring-line hover:bg-sand')}>
+              {f.label}<span className={cx('text-xs tabular', filter === f.value ? 'text-white/60' : 'text-muted')}>{countFor(f.value)}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <Card className="overflow-x-auto">
-        {shown.length === 0 ? <EmptyState title="No members match" /> : (
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-sand/70 text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Member</th>
-                <th className="px-4 py-3 font-semibold">Phone</th>
-                <th className="px-4 py-3 font-semibold">Stay</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Booked till</th>
-                <th className="px-4 py-3 font-semibold">This week</th>
-                <th className="px-4 py-3 font-semibold">Next week</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {shown.map(({ p, s: st, cur, next }) => (
-                <tr key={p.id} className="cursor-pointer hover:bg-cream" onClick={() => setOpenId(p.id)}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar name={p.full_name} className="size-8 text-xs" />
-                      <div>
-                        <p className="font-semibold">{p.full_name} {p.role !== 'student' && <Badge tone="brand" className="ml-1 capitalize">{p.role}</Badge>}{p.meal_mode === 'tiffin' && <Badge tone="amber" className="ml-1">Tiffin</Badge>}</p>
-                        <p className="font-mono text-xs text-muted">{p.member_code}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 tabular">{p.phone}</td>
-                  <td className="px-4 py-3 text-muted">{p.stay_type}{p.area && ` · ${p.area}`}</td>
-                  <td className="px-4 py-3">{stateBadge(st)}</td>
-                  <td className="px-4 py-3 tabular text-muted">{'sub' in st ? formatDate(st.sub.end_date) : '—'}</td>
-                  <td className="px-4 py-3 text-muted">{cur ? (cur.mode === 'pack' ? packName(cur.pack_id) : 'Custom') : 'Default'}</td>
-                  <td className="px-4 py-3 text-muted">{next ? (next.mode === 'pack' ? packName(next.pack_id) : 'Custom') : <span className="text-amber">Not chosen</span>}</td>
+      {shown.length === 0 ? <Card><EmptyState title="No members match" /></Card> : (
+        <>
+          {/* Phones: one row per member */}
+          <Card className="divide-y divide-line overflow-hidden md:hidden">
+            {shown.map(({ p, s: st }) => (
+              <button key={p.id} type="button" onClick={() => setOpenId(p.id)} className="flex w-full items-center gap-3 px-3.5 py-3 text-left active:bg-sand">
+                <Avatar name={p.full_name} className="size-10 text-xs" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate font-semibold">{p.full_name}</span>
+                    {p.meal_mode === 'tiffin' && <Badge tone="amber">Tiffin</Badge>}
+                    {p.role !== 'student' && <Badge tone="brand" className="capitalize">{p.role === 'admin' ? 'Owner' : p.role}</Badge>}
+                  </span>
+                  <span className="block truncate text-xs text-muted"><span className="font-mono">{p.member_code}</span> · {p.phone}{'sub' in st ? ` · till ${formatDate(st.sub.end_date)}` : ''}</span>
+                </span>
+                {p.role === 'student' && stateBadge(st)}
+              </button>
+            ))}
+          </Card>
+
+          {/* Larger screens: a table */}
+          <Card className="hidden overflow-x-auto md:block">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Member</th>
+                  <th className="px-4 py-3 font-semibold">Phone</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Booked till</th>
+                  <th className="px-4 py-3 font-semibold">This week</th>
+                  <th className="px-4 py-3 font-semibold">Next week</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {shown.map(({ p, s: st, cur, next }) => (
+                  <tr key={p.id} className="cursor-pointer hover:bg-cream" onClick={() => setOpenId(p.id)}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={p.full_name} className="size-8 text-xs" />
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-1.5 font-semibold">{p.full_name}{p.meal_mode === 'tiffin' && <Badge tone="amber">Tiffin</Badge>}{p.role !== 'student' && <Badge tone="brand" className="capitalize">{p.role === 'admin' ? 'Owner' : p.role}</Badge>}</p>
+                          <p className="truncate text-xs text-muted"><span className="font-mono">{p.member_code}</span>{p.area && ` · ${p.area}`}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 tabular">{p.phone}</td>
+                    <td className="px-4 py-3">{p.role === 'student' ? stateBadge(st) : '—'}</td>
+                    <td className="px-4 py-3 tabular text-muted">{'sub' in st ? formatDate(st.sub.end_date) : '—'}</td>
+                    <td className="px-4 py-3 text-muted">{weekLabel(cur)}</td>
+                    <td className="px-4 py-3 text-muted">{weekLabel(next)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </>
+      )}
 
       {openId && <MemberModal ops={ops} profile={ops.byId.get(openId)!} onClose={() => setOpenId(null)} onChanged={q.reload} />}
     </div>
@@ -153,33 +196,33 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
   return (
     <Modal open onClose={onClose} title={profile.full_name} wide>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-start gap-3">
           <Avatar name={profile.full_name} className="size-12 text-base" />
           <div className="min-w-0 flex-1">
-            <p className="font-mono text-sm font-semibold text-brand">{profile.member_code}</p>
-            <p className="text-sm text-muted">{profile.email} · {profile.phone}</p>
-            <p className="text-sm text-muted">{[profile.year, profile.stay_type, profile.area, profile.college].filter(Boolean).join(' · ')}</p>
-            {profile.meal_mode === 'tiffin' && <p className="mt-0.5 text-sm"><Badge tone="amber">Tiffin</Badge> <span className="text-muted">{profile.address || 'No delivery address yet'}</span></p>}
+            <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-semibold text-brand">{profile.member_code}</span>{profile.role === 'student' ? stateBadge(st) : <Badge tone="brand" className="capitalize">{profile.role === 'admin' ? 'Owner' : profile.role}</Badge>}</div>
+            <p className="mt-0.5 text-sm text-muted">{[profile.phone, profile.year, profile.stay_type, profile.area].filter(Boolean).join(' · ')}</p>
+            {profile.meal_mode === 'tiffin' && <p className="mt-1 text-sm"><Badge tone="amber">Tiffin</Badge> <span className="text-muted">{profile.address || 'No delivery address yet'}</span></p>}
           </div>
-          {stateBadge(st)}
-          {profile.phone && (
-            <a href={whatsappLink(profile.phone, `Hi ${profile.full_name.split(' ')[0]}, this is Radixo.`)} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-leaf px-3 text-sm font-semibold text-white">
-              <MessageCircle className="size-4" /> WhatsApp
-            </a>
-          )}
         </div>
+        {profile.phone && (
+          <div className="grid grid-cols-3 gap-2">
+            <a href={`tel:${profile.phone}`} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-sand text-sm font-semibold hover:bg-line/60"><Phone className="size-4" /> Call</a>
+            <a href={whatsappLink(profile.phone, `Hi ${profile.full_name.split(' ')[0]}, this is Radixo.`)} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-leaf text-sm font-semibold text-white"><MessageCircle className="size-4" /> WhatsApp</a>
+            <button type="button" onClick={() => setWalletOpen(true)} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-sand text-sm font-semibold hover:bg-line/60"><WalletCards className="size-4" /> Wallet</button>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-3 text-center">
-          <div className="rounded-xl bg-sand p-3"><p className="font-display text-2xl font-bold">{att.length}</p><p className="text-xs text-muted">meals, last 14 days</p></div>
-          <button type="button" onClick={() => setWalletOpen(true)} className="rounded-xl bg-sand p-3 hover:bg-line/60"><p className="font-display text-2xl font-bold">{formatINR(ops.walletOf(profile.id))}</p><p className="text-xs text-muted">wallet · add money</p></button>
-          <div className="rounded-xl bg-sand p-3"><p className="font-display text-2xl font-bold">{formatINR(pays.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount + p.wallet_used, 0))}</p><p className="text-xs text-muted">paid in total</p></div>
+          <div className="rounded-xl border border-line p-3"><p className="text-xl font-semibold tabular">{att.length}</p><p className="text-[11px] text-muted">meals in 14 days</p></div>
+          <div className="rounded-xl border border-line p-3"><p className="text-xl font-semibold tabular">{formatINR(ops.walletOf(profile.id))}</p><p className="text-[11px] text-muted">in wallet</p></div>
+          <div className="rounded-xl border border-line p-3"><p className="text-xl font-semibold tabular">{formatINR(pays.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount + p.wallet_used, 0))}</p><p className="text-[11px] text-muted">paid in total</p></div>
         </div>
 
         <div>
           <h3 className="mb-2 text-sm font-semibold">Bookings</h3>
           {subs.length === 0 ? <p className="text-sm text-muted">No bookings yet.</p> : (
             <ul className="divide-y divide-line rounded-xl border border-line">
-              {subs.map((s) => <li key={s.id} className="flex justify-between gap-3 px-3 py-2 text-sm"><span>{subLabel(s, ops.plans, ops.packs)} <span className="text-xs text-muted">· {mealsLabel(s.meals)}</span></span><span className="text-muted tabular">{formatDate(s.start_date)} – {formatDate(s.end_date)}</span></li>)}
+              {subs.map((s) => <li key={s.id} className="flex flex-col gap-0.5 px-3 py-2 text-sm sm:flex-row sm:justify-between sm:gap-3"><span className="font-medium">{subLabel(s, ops.plans, ops.packs)} <span className="text-xs font-normal text-muted">· {mealsLabel(s.meals)}</span></span><span className="text-xs text-muted tabular sm:text-sm">{formatDate(s.start_date)} – {formatDate(s.end_date)}</span></li>)}
             </ul>
           )}
         </div>
@@ -187,7 +230,7 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
           <h3 className="mb-2 text-sm font-semibold">Payments</h3>
           {pays.length === 0 ? <p className="text-sm text-muted">No payments yet.</p> : (
             <ul className="divide-y divide-line rounded-xl border border-line">
-              {pays.map((p) => <li key={p.id} className="flex justify-between gap-3 px-3 py-2 text-sm"><span>{formatDateTime(p.created_at)} · {p.method === 'wallet' ? 'Wallet' : p.method === 'cash' ? 'Cash' : `UTR ${p.utr}`}{p.wallet_used > 0 && p.method !== 'wallet' ? ` + ${formatINR(p.wallet_used)} wallet` : ''}</span><span className="tabular">{formatINR(p.amount + p.wallet_used)} <Badge tone={p.status === 'approved' ? 'green' : p.status === 'pending' ? 'amber' : 'red'} className="capitalize">{p.status}</Badge></span></li>)}
+              {pays.map((p) => <li key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm"><span className="min-w-0"><span className="block truncate font-medium">{p.details?.label ?? 'Payment'}</span><span className="block truncate text-xs text-muted">{formatDateTime(p.created_at)} · {p.method === 'wallet' ? 'Wallet' : p.method === 'cash' ? 'Cash' : `UTR ${p.utr}`}{p.wallet_used > 0 && p.method !== 'wallet' ? ` + ${formatINR(p.wallet_used)} wallet` : ''}</span></span><span className="shrink-0 text-right tabular"><span className="block font-semibold">{formatINR(p.amount + p.wallet_used)}</span><Badge tone={p.status === 'approved' ? 'green' : p.status === 'pending' ? 'amber' : 'red'} className="capitalize">{p.status}</Badge></span></li>)}
             </ul>
           )}
         </div>
@@ -198,7 +241,7 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
             <div>
               <h3 className="mb-2 text-sm font-semibold">Wallet</h3>
               <ul className="divide-y divide-line rounded-xl border border-line">
-                {txns.slice(0, 8).map((x) => <li key={x.id} className="flex justify-between gap-3 px-3 py-2 text-sm"><span>{formatDateTime(x.created_at)} · {x.note}</span><span className={x.amount >= 0 ? 'font-semibold text-leaf tabular' : 'tabular'}>{x.amount >= 0 ? '+' : '−'}{formatINR(Math.abs(x.amount))}</span></li>)}
+                {txns.slice(0, 8).map((x) => <li key={x.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm"><span className="min-w-0"><span className="block truncate">{x.note}</span><span className="block text-xs text-muted">{formatDateTime(x.created_at)}</span></span><span className={x.amount >= 0 ? 'font-semibold text-leaf tabular' : 'tabular'}>{x.amount >= 0 ? '+' : '−'}{formatINR(Math.abs(x.amount))}</span></li>)}
               </ul>
             </div>
           )
@@ -206,7 +249,7 @@ function MemberModal({ ops, profile, onClose, onChanged }: { ops: Ops; profile: 
 
         {me?.id !== profile.id && (
           <div className="flex flex-wrap items-end gap-3 rounded-xl border border-line p-3">
-            <div className="w-48">
+            <div className="min-w-0 flex-1 sm:max-w-xs">
               <Select label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)}>
                 <option value="student">Student</option>
                 <option value="staff">Staff (check-in, prep, wastage)</option>

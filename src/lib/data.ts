@@ -127,6 +127,22 @@ export async function copyWeek(from: Week, weekStart: string) {
   return week
 }
 
+/** Replace other days' menu lines with a copy of one day's (ready-made menus keep the same picks). */
+export async function copyDay(weekId: string, fromDay: number, toDays: number[]) {
+  const { items, packs } = await loadWeekContent(weekId)
+  const source = items.filter((it) => it.day === fromDay)
+  const picks = new Map(packs.map((p) => [p.id, { ...p.picks }]))
+  const old = items.filter((x) => toDays.includes(x.day))
+  await Promise.all(old.map((it) => api.remove('menu_items', it.id)))
+  for (const pk of picks.values()) for (const it of old) delete pk[it.id]
+  const made = await Promise.all(toDays.flatMap((day) => source.map(async (it) => {
+    const { id, ...rest } = it
+    return { from: id, to: (await api.insert('menu_items', { ...rest, day })).id }
+  })))
+  for (const pk of picks.values()) for (const m of made) if (pk[m.from]) pk[m.to] = pk[m.from]
+  await Promise.all(packs.map((p) => api.update('packs', p.id, { picks: picks.get(p.id)! })))
+}
+
 export async function createEmptyWeek(weekStart: string) {
   return api.insert('weeks', { week_start: weekStart, status: 'draft', choice_deadline: defaultDeadline(weekStart) })
 }

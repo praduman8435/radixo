@@ -50,20 +50,20 @@ export default function Overview() {
 
   return (
     <div className="animate-rise">
-      <PageHeader title="Overview" subtitle={formatDate(t, { weekday: true, year: true })} actions={<LinkButton to="/admin/checkin">Open check-in <ArrowRight className="size-4" /></LinkButton>} />
+      <PageHeader title="Overview" subtitle={formatDate(t, { weekday: true, year: true })} actions={<LinkButton size="sm" to="/admin/checkin">Check-in <ArrowRight className="size-4" /></LinkButton>} />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 [&>*]:min-w-0">
         <Stat label="Active members" value={activeToday.length} hint={`${members.length} registered`} icon={<Users className="size-4" />} tone="brand" />
         <Card className="col-span-2 p-4">
           <div className="flex items-center gap-2 text-sm font-medium text-muted">
             <span className="grid size-7 place-items-center rounded-lg bg-amber-50 text-amber"><UtensilsCrossed className="size-4" /></span>
             Today&rsquo;s meals · checked in / expected
           </div>
-          <div className="mt-3 grid grid-cols-4 gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {MEALS.map((meal, i) => (
               <div key={meal} className={cx('rounded-xl p-2.5', meal === currentMeal() ? 'bg-brand-50' : 'bg-sand/60')}>
                 <p className={cx('text-xs font-semibold', meal === currentMeal() ? 'text-brand' : 'text-muted')}>{MEAL_NAME[meal]}</p>
-                <p className="mt-0.5 font-display text-2xl font-bold tabular leading-none">{checked(meal)}<span className="text-base text-muted"> / {prep[i].expected}</span></p>
+                <p className="mt-0.5 text-xl font-semibold leading-none tabular">{checked(meal)}<span className="text-sm font-medium text-muted"> / {prep[i].expected}</span></p>
                 <p className="mt-1 text-[11px] text-muted">{prep[i].members} booked</p>
               </div>
             ))}
@@ -82,7 +82,7 @@ export default function Overview() {
         <Stat label="Collected, 30 days" value={formatINR(ops.payments.filter((p) => p.status === 'approved' && p.created_at.slice(0, 10) >= addDays(t, -30)).reduce((s, p) => s + p.amount, 0))} hint="Approved payments" icon={<BadgeCheck className="size-4" />} tone="green" />
       </div>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+      <div className="mt-6 grid gap-5 lg:grid-cols-2 [&>*]:min-w-0">
         <Card className="p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-bold">Needs action</h2>
